@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Math Tutor DC – Professional Private Tutoring</title>
+    <title>Math Tutor DC – In-Person & Online Math Tutoring in Washington, DC</title>
     <meta name="description" content="Professional in-person and online math tutoring in Washington DC. Algebra, Calculus, Statistics, SAT, ACT, college math and more." />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
     <style>
@@ -111,12 +111,12 @@
 
 <header>
     <h1>Math Tutor DC</h1>
-    <p>Professional in-person and online mathematics tutoring across Washington DC.</p>
+    <p>Professional in-person and online tutoring from early-career professionals in Washington DC.</p>
 </header>
 
 <section class="form-section">
     <h2>Request Tutoring</h2>
-    <form>
+    <form id="tutoring-form">
         <input type="text" name="name" placeholder="Your Name" required />
         <input type="email" name="email" placeholder="Your Email" required />
 
@@ -150,12 +150,15 @@
 <section class="rates">
     <h2>Rates</h2>
     <div class="rate-box">
-        <strong>$70/hr — Online Sessions</strong>
+        <strong>$35/hr In-Person or Online</strong>
     </div>
     <div class="rate-box">
-        <strong>$90/hr — In-Person Sessions (DC)</strong>
+        <strong>$120 for 4 hour bundle deal</strong>
     </div>
-    <p>Discounts available for weekly recurring students and group sessions.</p>
+    <div class="rate-box">
+        <strong>$20 Resume review</strong>
+    </div>
+    <p>Discounts available for group sessions.</p>
 </section>
 
 <section class="tutors">
@@ -163,14 +166,14 @@
 
     <div class="tutor">
         <img src="tutor1.jpg" alt="Tutor 1">
-        <h3>John Stewart</h3>
-        <p>Math and Philosophy, Boston College. Specializes in Calculus, Linear Algebra, and exam preparation. Experienced with high school and university students.</p>
+        <h3>John-Stewart</h3>
+        <p>Math, Economics and Philosophy, Boston College. Research and Data management in the Government. Specializes in Calculus, Linear Algebra, and Probability. 80+ hours of tutoring experience with high school and university students.</p>
     </div>
 
     <div class="tutor">
-        <img src="tutor2.jpg" alt="Tutor 2">
-        <h3>Sarah Kim</h3>
-        <p>Mathematics M.S., Georgetown University. Focus on Algebra, Statistics, and standardized test prep. Over 5 years of tutoring experience.</p>
+        <img src="tutor2.gif" alt="Tutor 2">
+        <h3>Luke</h3>
+        <p>Economics, University of Washington. Research and Data management in the Government. Focus on Statistics, Career prep, and Writing. 100+ hours of tutoring experience.</p>
     </div>
 </section>
 
@@ -187,12 +190,73 @@
         <li>Probability & Statistics</li>
         <li>SAT / ACT / GRE Math</li>
         <li>College-level math courses</li>
+        <li>Econometrics</li>
+        <li>Undergraduate Thesis Prep</li>
     </ul>
 </section>
 
 <footer>
     © 2025 Math Tutor DC – All Rights Reserved
+            Based in Washington, DC and serving students in Dupont Circle, Georgetown, Capitol Hill, and surrounding neighborhoods. Online math tutoring available to students anywhere in the U.S.
 </footer>
+
+#SEO stuff
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Math Tutor DC",
+  "description": "Private math tutoring in Washington, DC for middle school, high school, and college students.",
+  "areaServed": "Washington, DC",
+  "url": "https://YOUR_USERNAME.github.io/YOUR_REPO_NAME/",
+  "telephone": "+1-202-555-0123",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Washington",
+    "addressRegion": "DC",
+    "addressCountry": "US"
+  }
+}
+</script>
+
+#function to send email using mailto
+<script>
+  function sendTutoringEmail(event) {
+    event.preventDefault(); // stop normal form submit
+
+    const form = document.getElementById('tutoring-form');
+    const data = new FormData(form);
+
+    // TODO: change this to your real email
+    const to = "johnstewart.leech@gmail.com, lukechaussee119@gmail.com";
+
+    const subject = encodeURIComponent("New Math Tutoring Request - Math Tutor DC");
+
+    const bodyLines = [
+      "You have a new tutoring request:",
+      "",
+      "Name: " + data.get("name"),
+      "Email: " + data.get("email"),
+      "Class: " + data.get("class"),
+      "Mode: " + data.get("mode"),
+      "Preferred time: " + data.get("time"),
+      "",
+      "Additional details:",
+      data.get("message") || "(none)"
+    ];
+
+    const body = encodeURIComponent(bodyLines.join("\n"));
+    const mailtoLink = "mailto:" + to + "?subject=" + subject + "&body=" + body;
+
+    window.location.href = mailtoLink;
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("tutoring-form");
+    form.addEventListener("submit", sendTutoringEmail);
+  });
+</script>
+
 
 </body>
 </html>
