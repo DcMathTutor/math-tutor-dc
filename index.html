@@ -198,6 +198,11 @@
 
         <textarea name="message" rows="4" placeholder="Any additional details..." required></textarea>
 
+        <!-- Hidden field: auto-populated from ?src= URL parameter.
+             Lets QR codes on flyers/socials silently tag the lead source.
+             e.g. https://dcmathtutor.github.io/math-tutor-dc/?src=flyer_a -->
+        <input type="hidden" name="src" id="src-field" value="">
+
         <button type="submit">Submit Request</button>
         <div id="form-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
     </form>
@@ -366,6 +371,15 @@
   document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById("tutoring-form");
     form.addEventListener("submit", sendTutoringRequest);
+
+    // Read ?src= from the URL and silently populate the hidden field.
+    // This lets each QR code / link carry its own attribution tag
+    // without any visible UI change for the visitor.
+    const urlSrc = new URLSearchParams(window.location.search).get('src');
+    if (urlSrc) {
+      const srcField = document.getElementById('src-field');
+      if (srcField) srcField.value = urlSrc.slice(0, 64); // cap length
+    }
 
     // Carousel logic
     const track = document.getElementById('carousel-track');

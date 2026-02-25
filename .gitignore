@@ -1,2 +1,4 @@
-/backend
+backend/.env
+backend/node_modules/
+node_modules/
 CLAUDE.md
