@@ -337,12 +337,26 @@ function logout() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FETCH WITH TIMEOUT
+// Render free tier sleeps after 15 min of inactivity and can take up to 50s
+// to wake. Without a timeout the browser just hangs silently.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 55000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOGIN
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function login() {
   const btn      = document.getElementById('login-btn');
   const errEl    = document.getElementById('login-error');
+  const statusEl = document.getElementById('server-status');
   const password = document.getElementById('password-input').value;
 
   errEl.textContent = '';
@@ -351,8 +365,19 @@ async function login() {
   btn.disabled    = true;
   btn.textContent = 'Signing in…';
 
+  // Show elapsed time so it's clear the request is in-flight, not frozen.
+  // Render cold starts take 20–50s; this prevents the "is it stuck?" panic.
+  const startTs = Date.now();
+  const ticker = setInterval(() => {
+    const secs = Math.round((Date.now() - startTs) / 1000);
+    if (secs >= 3) {
+      btn.textContent   = `Waking server… ${secs}s`;
+      statusEl.textContent = 'Server is starting up – this takes up to 50s on first load.';
+    }
+  }, 1000);
+
   try {
-    const res  = await fetch(`${BACKEND_URL}/admin/login`, {
+    const res  = await fetchWithTimeout(`${BACKEND_URL}/admin/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ password }),
@@ -362,13 +387,22 @@ async function login() {
     if (res.ok && data.token) {
       setToken(data.token);
       showDashboard();
+    } else if (res.status === 404) {
+      errEl.textContent = 'Admin endpoint not found – has the new backend been deployed yet?';
+    } else if (res.status === 503) {
+      errEl.textContent = 'Admin not configured on server – set ADMIN_PASSWORD_HASH and JWT_SECRET in Render.';
     } else {
       errEl.textContent = data.error || 'Login failed.';
     }
   } catch (err) {
-    errEl.textContent = 'Cannot reach server. Is the backend running?';
+    if (err.name === 'AbortError') {
+      errEl.textContent = 'Server took too long to respond. Try again – it should be warmer now.';
+    } else {
+      errEl.textContent = 'Cannot reach server. Check your internet connection.';
+    }
     console.error('[Login]', err);
   } finally {
+    clearInterval(ticker);
     btn.disabled    = false;
     btn.textContent = 'Sign In';
   }
@@ -599,14 +633,26 @@ function escHtml(str) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 (async function init() {
-  // Ping backend to pre-warm Render's free-tier sleep and show status
+  // Pre-warm Render's free-tier server so it's ready by the time the user
+  // types their password. Shows elapsed time so it doesn't look frozen.
   const statusEl = document.getElementById('server-status');
+  const pingStart = Date.now();
+
+  const pingTicker = setInterval(() => {
+    const secs = Math.round((Date.now() - pingStart) / 1000);
+    statusEl.textContent = `Connecting to server… ${secs}s`;
+  }, 1000);
+
   try {
-    const start = Date.now();
-    await fetch(`${BACKEND_URL}/ping`);
-    statusEl.textContent = `Server ready (${Date.now() - start}ms)`;
+    await fetchWithTimeout(`${BACKEND_URL}/ping`);
+    clearInterval(pingTicker);
+    const ms = Date.now() - pingStart;
+    statusEl.textContent = ms > 5000
+      ? `Server ready after ${Math.round(ms / 1000)}s cold start`
+      : `Server ready (${ms}ms)`;
   } catch {
-    statusEl.textContent = 'Server may be sleeping – first login will be slow.';
+    clearInterval(pingTicker);
+    statusEl.textContent = 'Server not responding – login may be slow.';
   }
 
   // If a JWT is already in sessionStorage, skip straight to dashboard
