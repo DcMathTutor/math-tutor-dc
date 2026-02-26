@@ -29,23 +29,7 @@ Project structure
 Backend setup (Render.com)
 --------------------------
 
-The backend is Python/Flask. Currently deployed from Desktop/backend-tutor.
-To switch to this repo (recommended – keeps everything in one place):
-
-1. In Render, update the service: Connected Repo → this repo, Root Directory = backend
-2. Build command:  pip install -r requirements.txt
-3. Start command:  gunicorn app:app
-4. In Render's "Environment" tab – existing vars stay, add two new ones:
-
-   RESEND_API_KEY        Already set – no change
-   EMAIL_TO              Already set – no change
-   ADMIN_PASSWORD_HASH   NEW – bcrypt hash of your admin password
-                         Generate: python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
-   JWT_SECRET            NEW – long random string
-                         Generate: python -c "import secrets; print(secrets.token_hex(48))"
-
-Set these directly in Render's dashboard – never in a local file – to keep
-the password hidden from AI assistants and out of version control.
+The backend is Python/Flask. Currently deployed from this repository.
 
 
 Admin page

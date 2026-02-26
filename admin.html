@@ -107,18 +107,29 @@
       background: #fff; border: 1px solid #000; padding: 20px;
       text-align: center; position: relative;
     }
-    .qr-card canvas { display: block; margin: 0 auto 12px; }
+    .qr-card canvas { display: block; margin: 10px auto 12px; }
     .qr-card .qr-label {
-      font-weight: 600; font-size: 0.9rem; margin-bottom: 4px;
+      font-weight: 700; font-size: 0.95rem; margin-bottom: 2px;
     }
-    .qr-card .qr-url {
-      font-size: 0.7rem; color: #555; word-break: break-all;
-      margin-bottom: 12px;
+    .qr-link-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 12px; flex-wrap: wrap;
     }
+    .qr-link {
+      font-size: 0.68rem; color: #333; word-break: break-all;
+      flex: 1; text-decoration: none; border-bottom: 1px dotted #999;
+    }
+    .qr-link:hover { color: #000; }
+    .copy-btn {
+      padding: 3px 8px; background: #eee; color: #333; border: 1px solid #ccc;
+      border-radius: 3px; font-size: 0.72rem; font-family: inherit;
+      white-space: nowrap; cursor: pointer; flex-shrink: 0;
+    }
+    .copy-btn:hover { background: #ddd; }
     .qr-card .qr-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
     .qr-card button {
       padding: 5px 12px; background: #000; color: #fff; border: none;
-      border-radius: 4px; font-size: 0.78rem; font-family: inherit;
+      border-radius: 4px; font-size: 0.78rem; font-family: inherit; cursor: pointer;
     }
     .qr-card button.remove-btn {
       background: transparent; color: #c00; border: 1px solid #c00;
@@ -239,10 +250,12 @@
       </p>
 
       <div class="qr-controls">
-        <input id="new-src-input" type="text" placeholder="New source key (e.g. flyer_c)"
+        <input id="new-src-label" type="text" placeholder="Name (e.g. Dupont Circle Spring Flyer)" />
+        <input id="new-src-input" type="text" placeholder="Short key (e.g. flyer_c)"
                onkeydown="if(event.key==='Enter') addSource()" />
         <button onclick="addSource()">+ Add source</button>
       </div>
+      <div id="add-src-error" style="color:red;font-size:0.82rem;margin-bottom:12px;"></div>
 
       <div class="qr-grid" id="qr-grid">
         <!-- populated by renderQRCodes() -->
@@ -439,18 +452,28 @@ function saveSources(sources) {
 }
 
 function addSource() {
-  const input = document.getElementById('new-src-input');
-  const raw   = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-  if (!raw) return;
+  const labelInput = document.getElementById('new-src-label');
+  const keyInput   = document.getElementById('new-src-input');
+  const errEl      = document.getElementById('add-src-error');
+
+  const label = labelInput.value.trim();
+  const raw   = keyInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+
+  errEl.textContent = '';
+
+  if (!label) { errEl.textContent = 'Please enter a name for this source.'; labelInput.focus(); return; }
+  if (!raw)   { errEl.textContent = 'Please enter a short key (letters and numbers only).'; keyInput.focus(); return; }
 
   const sources = getSources();
   if (sources.find(s => s.key === raw)) {
-    alert(`Source "${raw}" already exists.`);
+    errEl.textContent = `Key "${raw}" already exists – choose a different one.`;
     return;
   }
-  sources.push({ key: raw, label: raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) });
+
+  sources.push({ key: raw, label });
   saveSources(sources);
-  input.value = '';
+  labelInput.value = '';
+  keyInput.value   = '';
   renderQRCodes();
 }
 
@@ -464,38 +487,65 @@ function removeSource(key) {
 async function renderQRCodes() {
   const grid    = document.getElementById('qr-grid');
   const sources = getSources();
-  grid.innerHTML = '';
+
+  // Build all cards first (off-DOM), then swap in one shot so the grid
+  // never flickers blank while QR codes are still rendering.
+  const fragment = document.createDocumentFragment();
 
   for (const src of sources) {
     const url  = `${SITE_URL}?src=${encodeURIComponent(src.key)}`;
     const card = document.createElement('div');
     card.className = 'qr-card';
-    card.id        = `qr-card-${src.key}`;
 
+    // Label (name)
+    const labelEl = document.createElement('div');
+    labelEl.className   = 'qr-label';
+    labelEl.textContent = src.label;
+
+    // Canvas for QR code
     const canvas = document.createElement('canvas');
-    card.innerHTML = `
-      <div class="qr-label">${escHtml(src.label)}</div>
-    `;
-    card.prepend(canvas);  // canvas first so label appears below
 
+    // Link — clickable, full URL, with copy button
+    const linkRow = document.createElement('div');
+    linkRow.className = 'qr-link-row';
+    linkRow.innerHTML = `
+      <a class="qr-link" href="${escHtml(url)}" target="_blank" title="Open link">${escHtml(url)}</a>
+      <button class="copy-btn" onclick="copyLink('${escHtml(url)}', this)" title="Copy link">Copy</button>
+    `;
+
+    // Actions
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'qr-actions';
     actionsDiv.innerHTML = `
-      <button onclick="downloadQR('${src.key}','${escHtml(src.label)}')">Download</button>
-      <button class="remove-btn" onclick="removeSource('${src.key}')">Remove</button>
+      <button onclick="downloadQR('${escHtml(src.key)}','${escHtml(src.label)}')">Download PNG</button>
+      <button class="remove-btn" onclick="removeSource('${escHtml(src.key)}')">Remove</button>
     `;
 
-    const urlDiv = document.createElement('div');
-    urlDiv.className = 'qr-url';
-    urlDiv.textContent = url;
-
-    card.appendChild(urlDiv);
+    card.appendChild(labelEl);
+    card.appendChild(canvas);
+    card.appendChild(linkRow);
     card.appendChild(actionsDiv);
-    grid.appendChild(card);
+    fragment.appendChild(card);
 
-    // Render QR code into the canvas
-    await QRCode.toCanvas(canvas, url, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } });
+    // Render QR – catch silently so one bad source doesn't break the rest
+    try {
+      await QRCode.toCanvas(canvas, url, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } });
+    } catch (e) {
+      canvas.style.display = 'none';
+      console.error('[QR] render failed for', src.key, e);
+    }
   }
+
+  grid.innerHTML = '';
+  grid.appendChild(fragment);
+}
+
+function copyLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
 }
 
 async function downloadQR(key, label) {
