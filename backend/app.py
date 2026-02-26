@@ -4,11 +4,14 @@
 # Endpoints (existing, unchanged):
 #   POST /contact           – Accept tutoring request, send email via Resend, log to DB
 #
-# Endpoints (new – admin only):
+# Endpoints (admin):
 #   GET  /ping              – Health check / wake-up for Render free-tier sleep
 #   POST /admin/login       – Validate password, return JWT
 #   GET  /admin/submissions – List all submissions (JWT required)
 #   GET  /admin/stats       – Source analytics (JWT required)
+#
+# Endpoints (tutor portal):
+#   POST /tutor/login       – Validate tutor password, return JWT
 
 import os
 import time
@@ -36,12 +39,13 @@ CORS(app)  # Allow all origins (same as original)
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 EMAIL_TO       = os.environ.get("EMAIL_TO")  # e.g. "you@gmail.com,partner@gmail.com"
 
-# --- New vars (admin only) ---
-# ADMIN_PASSWORD_HASH: bcrypt hash of your chosen password. Generate with:
+# --- New vars (admin + tutor portal) ---
+# Generate bcrypt hashes with:
 #   python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
-# JWT_SECRET: any long random string. Generate with:
+# Generate JWT_SECRET with:
 #   python -c "import secrets; print(secrets.token_hex(48))"
 ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
+TUTOR_PASSWORD_HASH = os.environ.get("TUTOR_PASSWORD_HASH", "")
 JWT_SECRET          = os.environ.get("JWT_SECRET", "")
 
 if not RESEND_API_KEY:
@@ -265,6 +269,39 @@ def require_auth(f):
             return jsonify({"error": "Invalid token"}), 401
         return f(*args, **kwargs)
     return decorated
+
+# =============================================================================
+# TUTOR PORTAL AUTH
+# =============================================================================
+
+
+@app.post("/tutor/login")
+def tutor_login():
+    """
+    Validate tutor password against TUTOR_PASSWORD_HASH.
+    Issues a JWT with role='tutor', valid for 12 hours.
+    Kept separate from admin so each portal has its own password.
+    """
+    data     = request.get_json() or {}
+    password = data.get("password", "")
+
+    if not password:
+        return jsonify({"error": "Password required"}), 400
+
+    if not TUTOR_PASSWORD_HASH or not JWT_SECRET:
+        print("[TUTOR] TUTOR_PASSWORD_HASH or JWT_SECRET not set")
+        return jsonify({"error": "Tutor portal not configured on server"}), 503
+
+    valid = bcrypt.checkpw(password.encode(), TUTOR_PASSWORD_HASH.encode())
+    if not valid:
+        return jsonify({"error": "Invalid password"}), 401
+
+    token = jwt.encode(
+        {"role": "tutor", "exp": datetime.now(timezone.utc) + timedelta(hours=12)},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return jsonify({"token": token})
 
 # =============================================================================
 # ADMIN ENDPOINTS

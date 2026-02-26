@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutor Portal – Math Tutor DC</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      margin: 0; background: #f4f4f4; color: #000; line-height: 1.6;
+    }
+    h2 { font-size: 1.4rem; font-weight: 700; border-bottom: 1px solid #000;
+         padding-bottom: 6px; margin: 0 0 20px; }
+    h3 { font-size: 1rem; font-weight: 600; margin: 0 0 4px; }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+    #login-box {
+      background: #fff; border: 1px solid #000;
+      padding: 40px; max-width: 380px; width: 100%;
+    }
+    #login-box h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 6px; }
+    #login-box p  { font-size: 0.85rem; color: #555; margin: 0 0 24px; }
+    #login-box input[type="password"] {
+      width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 1rem; font-family: inherit; margin-bottom: 12px;
+    }
+    #login-box input[type="password"]:focus { border-color: #000; outline: none; }
+    #login-btn {
+      width: 100%; padding: 13px; background: #000; color: #fff; border: none;
+      border-radius: 4px; font-size: 1rem; font-family: inherit; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    #login-btn:hover     { background: #333; }
+    #login-btn:disabled  { background: #888; cursor: default; }
+    #login-error { color: red; font-size: 0.85rem; margin-top: 10px; min-height: 1.2em; }
+
+    /* ── Portal ── */
+    #portal { display: none; }
+
+    #portal-header {
+      background: #000; color: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px;
+    }
+    #portal-header h1 { font-size: 1.1rem; font-weight: 700; margin: 0; }
+    #logout-btn {
+      background: transparent; color: #fff; border: 1px solid #fff;
+      padding: 6px 14px; border-radius: 4px; font-size: 0.85rem;
+      font-family: inherit; cursor: pointer;
+    }
+    #logout-btn:hover { background: #fff; color: #000; }
+
+    .portal-body { max-width: 860px; margin: 0 auto; padding: 32px 20px; }
+
+    /* ── Section cards ── */
+    .section-card {
+      background: #fff; border: 1px solid #000;
+      padding: 28px; margin-bottom: 28px;
+    }
+
+    /* ── Meeting spots ── */
+    .spot-list { list-style: none; margin: 0; padding: 0; }
+    .spot-list li {
+      border-bottom: 1px solid #eee; padding: 14px 0;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 4px 16px; align-items: start;
+    }
+    .spot-list li:last-child { border-bottom: none; }
+    .spot-name { font-weight: 600; font-size: 0.95rem; }
+    .spot-neighborhood { font-size: 0.8rem; color: #555; grid-column: 1; }
+    .spot-notes { font-size: 0.82rem; color: #333; grid-column: 1; margin-top: 2px; }
+    .spot-tag {
+      grid-row: 1; grid-column: 2;
+      display: inline-block; padding: 2px 8px;
+      background: #000; color: #fff;
+      font-size: 0.7rem; font-weight: 600; border-radius: 3px;
+      white-space: nowrap; align-self: center;
+    }
+    .spot-tag.online { background: #555; }
+
+    /* ── Course materials ── */
+    .dev-banner {
+      display: inline-block; background: #000; color: #fff;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+      padding: 3px 10px; border-radius: 3px; margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+    .course-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .course-card {
+      border: 1px solid #ddd; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .course-card h3 { font-size: 0.9rem; }
+    .course-card a {
+      display: inline-block; font-size: 0.8rem; font-weight: 600;
+      color: #fff; background: #000; padding: 5px 12px;
+      border-radius: 3px; text-decoration: none; align-self: flex-start;
+    }
+    .course-card a:hover { background: #333; }
+    .course-card a.placeholder {
+      background: #ccc; color: #666; cursor: default; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     LOGIN
+     Password is checked client-side against a
+     SHA-256 hash you set yourself. See below.
+═══════════════════════════════════════════ -->
+<div id="login-screen">
+  <div id="login-box">
+    <h1>Tutor Portal</h1>
+    <p>Math Tutor DC · Tutors only</p>
+    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" />
+    <button id="login-btn" onclick="login()">Sign In</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PORTAL
+═══════════════════════════════════════════ -->
+<div id="portal">
+
+  <div id="portal-header">
+    <h1>Tutor Portal · Math Tutor DC</h1>
+    <button id="logout-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="portal-body">
+
+    <!-- ── Meeting Spots ────────────────────────────────── -->
+    <div class="section-card">
+      <h2>Good Spots to Meet Students</h2>
+      <!-- Add new spots here. Each <li> follows the same pattern. -->
+      <ul class="spot-list" id="spot-list">
+
+        <!-- EXAMPLE — delete or replace this one -->
+        <li>
+          <span class="spot-name">Placeholder Café</span>
+          <span class="spot-tag">In-person</span>
+          <span class="spot-neighborhood">Dupont Circle</span>
+          <span class="spot-notes">Delete this and add your own spots.</span>
+        </li>
+
+        <!-- Add more spots below. Copy the block above. -->
+        <!-- Tags: In-person / Online / Quiet / Loud / Wifi -->
+
+      </ul>
+    </div>
+
+    <!-- ── Course Materials ─────────────────────────────── -->
+    <div class="section-card">
+      <h2>Course Materials</h2>
+      <span class="dev-banner">In Development</span>
+      <p style="font-size:0.85rem;color:#555;margin:0 0 20px;">
+        Google Drive links to materials shared by past students.
+        Update a link by replacing the <code>href="#"</code> in the HTML.
+      </p>
+
+      <div class="course-grid" id="course-grid">
+        <!-- Populated by JS from COURSE_MATERIALS below -->
+      </div>
+    </div>
+
+  </div><!-- .portal-body -->
+</div><!-- #portal -->
+
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+// CONFIG
+// Password is set via TUTOR_PASSWORD_HASH in Render's environment dashboard.
+// Generate a hash: python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
+// ─────────────────────────────────────────────────────────────────────────
+
+const BACKEND_URL = 'https://math-tutor-backend-y3uz.onrender.com';
+
+// ─────────────────────────────────────────────────────────────────────────
+// COURSE MATERIALS
+// Add a Google Drive link to "url" when you have one.
+// Leave url as "" to show the placeholder button.
+// ─────────────────────────────────────────────────────────────────────────
+
+const COURSE_MATERIALS = [
+  { name: 'Algebra I & II',                  url: '' },
+  { name: 'Geometry',                        url: '' },
+  { name: 'Precalculus',                     url: '' },
+  { name: 'Calculus I–III',                  url: '' },
+  { name: 'Differential Equations',          url: '' },
+  { name: 'Linear Algebra',                  url: '' },
+  { name: 'Discrete Math',                   url: '' },
+  { name: 'Probability & Statistics',        url: '' },
+  { name: 'SAT / ACT / GRE Math',           url: '' },
+  { name: 'College-level math courses',      url: '' },
+  { name: 'Econometrics',                    url: '' },
+  { name: 'Physics through Classical Mech.', url: '' },
+  { name: 'Undergraduate Thesis Prep',       url: '' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// FETCH WITH TIMEOUT  (handles Render free-tier cold starts)
+// ─────────────────────────────────────────────────────────────────────────
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 55000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────────────────────
+
+function getToken()    { return sessionStorage.getItem('tutor_token'); }
+function setToken(t)   { sessionStorage.setItem('tutor_token', t); }
+function clearToken()  { sessionStorage.removeItem('tutor_token'); }
+
+async function login() {
+  const btn      = document.getElementById('login-btn');
+  const errEl    = document.getElementById('login-error');
+  const pw       = document.getElementById('pw').value;
+
+  errEl.textContent = '';
+  if (!pw) { errEl.textContent = 'Enter your password.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  const startTs = Date.now();
+  const ticker = setInterval(() => {
+    const secs = Math.round((Date.now() - startTs) / 1000);
+    if (secs >= 3) btn.textContent = `Waking server… ${secs}s`;
+  }, 1000);
+
+  try {
+    const res  = await fetchWithTimeout(`${BACKEND_URL}/tutor/login`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ password: pw }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.token) {
+      setToken(data.token);
+      showPortal();
+    } else if (res.status === 503) {
+      errEl.textContent = 'Tutor portal not configured – set TUTOR_PASSWORD_HASH in Render.';
+    } else {
+      errEl.textContent = data.error || 'Incorrect password.';
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      errEl.textContent = 'Server took too long – try again, it should be warmer now.';
+    } else {
+      errEl.textContent = 'Cannot reach server. Check your connection.';
+    }
+  } finally {
+    clearInterval(ticker);
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+function logout() {
+  clearToken();
+  document.getElementById('portal').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('pw').value = '';
+}
+
+document.getElementById('pw').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PORTAL INIT
+// ─────────────────────────────────────────────────────────────────────────
+
+function showPortal() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('portal').style.display       = 'block';
+  renderCourseGrid();
+}
+
+function renderCourseGrid() {
+  const grid = document.getElementById('course-grid');
+  grid.innerHTML = COURSE_MATERIALS.map(c => `
+    <div class="course-card">
+      <h3>${c.name}</h3>
+      ${c.url
+        ? `<a href="${c.url}" target="_blank" rel="noopener">Open Drive folder ↗</a>`
+        : `<a class="placeholder" href="#">No link yet</a>`
+      }
+    </div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// STARTUP — skip login if a valid token already exists in this session
+// ─────────────────────────────────────────────────────────────────────────
+
+if (getToken()) {
+  showPortal();
+}
+</script>
+
+</body>
+</html>
