@@ -21,6 +21,7 @@
     h1 { font-size: 1.8rem; font-weight: 700; margin: 0; }
     h2 { font-size: 1.2rem; font-weight: 600; border-bottom: 1px solid #000;
          padding-bottom: 6px; margin-top: 0; margin-bottom: 16px; }
+    h3 { font-size: 1rem; font-weight: 600; margin: 20px 0 12px; }
     a  { color: #000; }
     button { cursor: pointer; font-family: inherit; }
 
@@ -58,29 +59,38 @@
     #dash-header {
       background: #000; color: #fff;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 28px;
+      padding: 16px 28px; gap: 12px; flex-wrap: wrap;
     }
     #dash-header h1 { font-size: 1.2rem; }
     #dash-header span { font-size: 0.8rem; opacity: 0.6; margin-left: 12px; }
+    .header-actions { display: flex; gap: 10px; align-items: center; }
     #logout-btn {
       background: transparent; color: #fff; border: 1px solid #fff;
       padding: 6px 14px; border-radius: 4px; font-size: 0.85rem;
       font-family: inherit;
     }
     #logout-btn:hover { background: #fff; color: #000; }
+    #export-db-btn {
+      background: transparent; color: #aaa; border: 1px solid #555;
+      padding: 6px 14px; border-radius: 4px; font-size: 0.82rem;
+      font-family: inherit;
+    }
+    #export-db-btn:hover { color: #fff; border-color: #fff; }
 
     .dash-body { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
 
     /* ── Stats cards ─────────────────────────────────────────── */
     .stats-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 36px; }
     .stat-card {
-      flex: 1 1 160px; background: #fff; border: 1px solid #000;
+      flex: 1 1 140px; background: #fff; border: 1px solid #000;
       padding: 20px 24px;
     }
     .stat-card .label { font-size: 0.75rem; text-transform: uppercase;
                         letter-spacing: 0.06em; color: #555; }
-    .stat-card .value { font-size: 2.2rem; font-weight: 700; line-height: 1.1;
+    .stat-card .value { font-size: 2rem; font-weight: 700; line-height: 1.1;
                         margin-top: 4px; }
+    .stat-card .value.green { color: #1a7a1a; }
+    .stat-card .value.red   { color: #c00; }
 
     /* ── QR section ──────────────────────────────────────────── */
     .qr-controls {
@@ -179,13 +189,61 @@
     .tag.direct   { background: #ddd; }
     .tag.flyer    { background: #000; color: #fff; }
     .tag.social   { background: #e0f0ff; color: #005; }
+    .tag.new-lead      { background: #e8f4ff; color: #003; }
+    .tag.contacted { background: #fff3cd; color: #664; }
+    .tag.converted { background: #d4edda; color: #155724; }
+    .tag.lost      { background: #f8d7da; color: #721c24; }
 
     .notice { color: #888; font-size: 0.85rem; padding: 12px 0; }
+
+    /* ── Financial section ───────────────────────────────────── */
+    .fin-layout {
+      display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start;
+    }
+    .fin-statement { flex: 1 1 280px; }
+    .fin-funnel    { flex: 1 1 240px; }
+
+    .fin-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .fin-table td { padding: 8px 12px; border-bottom: 1px solid #eee; }
+    .fin-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .fin-table tr.subtotal td { border-top: 1px solid #000; font-weight: 600; }
+    .fin-table tr.total td {
+      border-top: 2px solid #000; font-weight: 700; font-size: 0.95rem;
+    }
+    .fin-table .negative { color: #c00; }
+    .fin-table .positive { color: #1a7a1a; }
+
+    .funnel-steps {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .funnel-step {
+      display: flex; align-items: center; gap: 12px;
+      background: #f9f9f9; border: 1px solid #ddd;
+      padding: 10px 14px; border-radius: 4px;
+    }
+    .funnel-step .fs-label {
+      font-size: 0.8rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #555; flex: 1;
+    }
+    .funnel-step .fs-count {
+      font-size: 1.4rem; font-weight: 700; min-width: 40px; text-align: right;
+    }
+    .funnel-step.new       { border-left: 4px solid #4a9fe0; }
+    .funnel-step.contacted { border-left: 4px solid #f0a500; }
+    .funnel-step.converted { border-left: 4px solid #2e7d32; }
+    .funnel-step.lost      { border-left: 4px solid #c62828; }
+
+    .fin-note {
+      font-size: 0.78rem; color: #888; margin-top: 14px;
+      padding: 10px 12px; background: #f9f9f9; border: 1px solid #eee;
+      border-radius: 4px;
+    }
 
     /* ── Responsive ──────────────────────────────────────────── */
     @media (max-width: 600px) {
       #dash-header { flex-wrap: wrap; gap: 10px; }
       .stat-card .value { font-size: 1.6rem; }
+      .fin-layout { flex-direction: column; }
     }
   </style>
 </head>
@@ -218,12 +276,15 @@
       <h1>Math Tutor DC</h1>
       <span>Admin Dashboard</span>
     </div>
-    <button id="logout-btn" onclick="logout()">Log out</button>
+    <div class="header-actions">
+      <button id="export-db-btn" onclick="exportDB()" title="Download SQLite database file">⬇ Export DB</button>
+      <button id="logout-btn" onclick="logout()">Log out</button>
+    </div>
   </div>
 
   <div class="dash-body">
 
-    <!-- Stats overview -->
+    <!-- ── Overview stats ──────────────────────────────────── -->
     <h2>Overview</h2>
     <div class="stats-grid">
       <div class="stat-card">
@@ -238,9 +299,115 @@
         <div class="label">Sources tracked</div>
         <div class="value" id="stat-sources">–</div>
       </div>
+      <div class="stat-card">
+        <div class="label">Revenue (all time)</div>
+        <div class="value" id="stat-revenue">–</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Net income</div>
+        <div class="value" id="stat-net">–</div>
+      </div>
     </div>
 
-    <!-- QR codes -->
+    <!-- ── Financial Overview ──────────────────────────────── -->
+    <div class="section-card">
+      <h2>Financial Overview</h2>
+      <div class="fin-layout">
+
+        <div class="fin-statement">
+          <h3>Income Statement (All Time)</h3>
+          <table class="fin-table">
+            <tbody id="fin-body">
+              <tr><td colspan="2" class="notice">Loading…</td></tr>
+            </tbody>
+          </table>
+          <div class="fin-note">
+            Enter payments and expenses in the database to populate this table.
+            Use <strong>Export DB</strong> (top right) to download the SQLite file,
+            edit it with <a href="https://sqlitebrowser.org/" target="_blank">DB Browser for SQLite</a>,
+            then re-upload via Render's shell, or use Render Persistent Disk for persistence across deploys.
+          </div>
+        </div>
+
+        <div class="fin-funnel">
+          <h3>Lead Funnel</h3>
+          <div class="funnel-steps" id="funnel-steps">
+            <div class="notice">Loading…</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── All Leads ───────────────────────────────────────── -->
+    <div class="section-card">
+      <h2>All Leads</h2>
+      <div class="leads-filter">
+        <input id="search-input" type="text" placeholder="Filter by name, email, class…"
+               oninput="filterLeads()" />
+        <select id="src-filter" onchange="filterLeads()">
+          <option value="">All sources</option>
+        </select>
+        <select id="status-filter" onchange="filterLeads()">
+          <option value="">All statuses</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="converted">Converted</option>
+          <option value="lost">Lost</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table id="leads-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Name</th><th>Email</th><th>Class</th>
+              <th>Mode</th><th>Source</th><th>Status</th><th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="leads-body">
+            <tr><td colspan="8" class="notice">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Clients ─────────────────────────────────────────── -->
+    <div class="section-card">
+      <h2>Clients</h2>
+      <div class="table-wrap">
+        <table id="clients-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Name</th><th>Email</th><th>Phone</th>
+              <th>Sessions</th><th>Notes</th><th>Added</th>
+            </tr>
+          </thead>
+          <tbody id="clients-body">
+            <tr><td colspan="7" class="notice">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Tutors ──────────────────────────────────────────── -->
+    <div class="section-card">
+      <h2>Tutors</h2>
+      <div class="table-wrap">
+        <table id="tutors-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Name</th><th>Email</th><th>Phone</th>
+              <th>Rate ($/hr)</th><th>Sessions</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="tutors-body">
+            <tr><td colspan="7" class="notice">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── QR Codes ────────────────────────────────────────── -->
     <div class="section-card">
       <h2>QR Codes &amp; Campaign Links</h2>
       <p style="font-size:0.82rem;color:#555;margin-bottom:16px;">
@@ -262,7 +429,7 @@
       </div>
     </div>
 
-    <!-- Source analytics -->
+    <!-- ── Source analytics ────────────────────────────────── -->
     <div class="section-card">
       <h2>Source Breakdown</h2>
       <div class="table-wrap">
@@ -277,31 +444,6 @@
           </thead>
           <tbody id="stats-body">
             <tr><td colspan="4" class="notice">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Lead submissions -->
-    <div class="section-card">
-      <h2>All Leads</h2>
-      <div class="leads-filter">
-        <input id="search-input" type="text" placeholder="Filter by name, email, class…"
-               oninput="filterLeads()" />
-        <select id="src-filter" onchange="filterLeads()">
-          <option value="">All sources</option>
-        </select>
-      </div>
-      <div class="table-wrap">
-        <table id="leads-table">
-          <thead>
-            <tr>
-              <th>#</th><th>Name</th><th>Email</th><th>Class</th>
-              <th>Mode</th><th>Source</th><th>Date</th>
-            </tr>
-          </thead>
-          <tbody id="leads-body">
-            <tr><td colspan="7" class="notice">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -384,7 +526,7 @@ async function login() {
   const ticker = setInterval(() => {
     const secs = Math.round((Date.now() - startTs) / 1000);
     if (secs >= 3) {
-      btn.textContent   = `Waking server… ${secs}s`;
+      btn.textContent      = `Waking server… ${secs}s`;
       statusEl.textContent = 'Server is starting up – this takes up to 50s on first load.';
     }
   }, 1000);
@@ -435,7 +577,14 @@ async function showDashboard() {
   document.getElementById('dashboard').style.display    = 'block';
 
   renderQRCodes();
-  await Promise.all([ loadStats(), loadSubmissions() ]);
+  // Load all data in parallel – each section handles its own error state
+  await Promise.all([
+    loadStats(),
+    loadSubmissions(),
+    loadFinancials(),
+    loadClients(),
+    loadTutors(),
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -497,15 +646,12 @@ async function renderQRCodes() {
     const card = document.createElement('div');
     card.className = 'qr-card';
 
-    // Label (name)
     const labelEl = document.createElement('div');
     labelEl.className   = 'qr-label';
     labelEl.textContent = src.label;
 
-    // Canvas for QR code
     const canvas = document.createElement('canvas');
 
-    // Link — clickable, full URL, with copy button
     const linkRow = document.createElement('div');
     linkRow.className = 'qr-link-row';
     linkRow.innerHTML = `
@@ -513,7 +659,6 @@ async function renderQRCodes() {
       <button class="copy-btn" onclick="copyLink('${escHtml(url)}', this)" title="Copy link">Copy</button>
     `;
 
-    // Actions
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'qr-actions';
     actionsDiv.innerHTML = `
@@ -527,7 +672,7 @@ async function renderQRCodes() {
     card.appendChild(actionsDiv);
     fragment.appendChild(card);
 
-    // Render QR – catch silently so one bad source doesn't break the rest
+    // Catch silently so one bad source doesn't break the rest
     try {
       await QRCode.toCanvas(canvas, url, { width: 160, margin: 1, color: { dark: '#000', light: '#fff' } });
     } catch (e) {
@@ -551,9 +696,7 @@ function copyLink(url, btn) {
 async function downloadQR(key, label) {
   const url    = `${SITE_URL}?src=${encodeURIComponent(key)}`;
   const canvas = document.createElement('canvas');
-
   await QRCode.toCanvas(canvas, url, { width: 400, margin: 2, color: { dark: '#000', light: '#fff' } });
-
   const link    = document.createElement('a');
   link.download = `qr-${key}.png`;
   link.href     = canvas.toDataURL('image/png');
@@ -590,9 +733,9 @@ function renderSourceTable(rows, total) {
   }
   const maxCount = Math.max(...rows.map(r => r.count));
   tbody.innerHTML = rows.map(r => {
-    const pct   = total ? Math.round(r.count / total * 100) : 0;
-    const barW  = Math.round(r.count / maxCount * 120);
-    const date  = r.last_seen ? new Date(r.last_seen).toLocaleDateString() : '–';
+    const pct  = total ? Math.round(r.count / total * 100) : 0;
+    const barW = Math.round(r.count / maxCount * 120);
+    const date = r.last_seen ? new Date(r.last_seen).toLocaleDateString() : '–';
     return `
       <tr>
         <td><span class="tag">${escHtml(r.source)}</span></td>
@@ -606,7 +749,7 @@ function renderSourceTable(rows, total) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUBMISSIONS
+// SUBMISSIONS / LEADS
 // ─────────────────────────────────────────────────────────────────────────────
 
 let allSubmissions = [];
@@ -627,19 +770,21 @@ async function loadSubmissions() {
   } catch (err) {
     console.error('[Submissions]', err);
     document.getElementById('leads-body').innerHTML =
-      '<tr><td colspan="7" class="notice">Could not load leads – is the backend awake?</td></tr>';
+      '<tr><td colspan="8" class="notice">Could not load leads – is the backend awake?</td></tr>';
   }
 }
 
 function filterLeads() {
-  const search = document.getElementById('search-input').value.toLowerCase();
-  const srcVal = document.getElementById('src-filter').value;
+  const search    = document.getElementById('search-input').value.toLowerCase();
+  const srcVal    = document.getElementById('src-filter').value;
+  const statusVal = document.getElementById('status-filter').value;
 
   const filtered = allSubmissions.filter(s => {
-    const matchSrc    = !srcVal || (s.src || 'direct') === srcVal;
-    const matchSearch = !search || [s.name, s.email, s.class, s.mode, s.message]
+    const matchSrc    = !srcVal    || (s.src || 'direct') === srcVal;
+    const matchStatus = !statusVal || (s.status || 'new') === statusVal;
+    const matchSearch = !search    || [s.name, s.email, s.class, s.mode, s.message]
       .join(' ').toLowerCase().includes(search);
-    return matchSrc && matchSearch;
+    return matchSrc && matchStatus && matchSearch;
   });
 
   renderLeadsTable(filtered);
@@ -648,24 +793,208 @@ function filterLeads() {
 function renderLeadsTable(rows) {
   const tbody = document.getElementById('leads-body');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="notice">No leads match the filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="notice">No leads match the filter.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map((r, i) => {
-    const src  = r.src || 'direct';
-    const cls  = src === 'direct' ? 'direct' : src.startsWith('flyer') ? 'flyer' : 'social';
-    const date = r.created_at ? new Date(r.created_at).toLocaleDateString() : '–';
+    const src    = r.src || 'direct';
+    const srcCls = src === 'direct' ? 'direct' : src.startsWith('flyer') ? 'flyer' : 'social';
+    const status = r.status || 'new';
+    const date   = r.created_at ? new Date(r.created_at).toLocaleDateString() : '–';
     return `
       <tr>
         <td>${rows.length - i}</td>
         <td>${escHtml(r.name)}</td>
         <td><a href="mailto:${escHtml(r.email)}">${escHtml(r.email)}</a></td>
         <td>${escHtml(r.class || '–')}</td>
-        <td>${escHtml(r.mode || '–')}</td>
-        <td><span class="tag ${cls}">${escHtml(src)}</span></td>
+        <td>${escHtml(r.mode  || '–')}</td>
+        <td><span class="tag ${srcCls}">${escHtml(src)}</span></td>
+        <td><span class="tag ${escHtml(status)}">${escHtml(status)}</span></td>
         <td>${date}</td>
       </tr>`;
   }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINANCIALS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadFinancials() {
+  try {
+    const res  = await fetch(`${BACKEND_URL}/admin/financials`, { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json();
+    renderFinancials(data);
+  } catch (err) {
+    console.error('[Financials]', err);
+    document.getElementById('fin-body').innerHTML =
+      '<tr><td colspan="2" class="notice">Could not load financials.</td></tr>';
+    document.getElementById('funnel-steps').innerHTML =
+      '<div class="notice">Could not load funnel data.</div>';
+  }
+}
+
+function fmt(n) {
+  // Format a number as $1,234.56
+  return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderFinancials(data) {
+  const is = data.income_statement || {};
+  const f  = data.lead_funnel      || {};
+
+  const revenue      = is.revenue      || 0;
+  const cogs         = is.cogs         || 0;
+  const gross_profit = is.gross_profit || 0;
+  const opex         = is.opex         || 0;
+  const net_income   = is.net_income   || 0;
+
+  // Update overview stat cards
+  document.getElementById('stat-revenue').textContent = fmt(revenue);
+  document.getElementById('stat-revenue').className =
+    'value ' + (revenue > 0 ? 'green' : '');
+  document.getElementById('stat-net').textContent = fmt(net_income);
+  document.getElementById('stat-net').className =
+    'value ' + (net_income > 0 ? 'green' : net_income < 0 ? 'red' : '');
+
+  // Income statement table
+  document.getElementById('fin-body').innerHTML = `
+    <tr>
+      <td>Revenue (client payments)</td>
+      <td class="${revenue > 0 ? 'positive' : ''}">${fmt(revenue)}</td>
+    </tr>
+    <tr>
+      <td>Cost of Revenue (tutor payments)</td>
+      <td class="${cogs > 0 ? 'negative' : ''}">−${fmt(cogs)}</td>
+    </tr>
+    <tr class="subtotal">
+      <td>Gross Profit</td>
+      <td class="${gross_profit >= 0 ? 'positive' : 'negative'}">${fmt(gross_profit)}</td>
+    </tr>
+    <tr>
+      <td>Operating Expenses</td>
+      <td class="${opex > 0 ? 'negative' : ''}">−${fmt(opex)}</td>
+    </tr>
+    <tr class="total">
+      <td>Net Income</td>
+      <td class="${net_income >= 0 ? 'positive' : 'negative'}">${fmt(net_income)}</td>
+    </tr>
+  `;
+
+  // Lead funnel
+  const total = f.total || 0;
+  const steps = [
+    { key: 'new',       label: 'New',       count: f.new       || 0 },
+    { key: 'contacted', label: 'Contacted', count: f.contacted || 0 },
+    { key: 'converted', label: 'Converted', count: f.converted || 0 },
+    { key: 'lost',      label: 'Lost',      count: f.lost      || 0 },
+  ];
+
+  document.getElementById('funnel-steps').innerHTML = steps.map(s => {
+    const pct = total ? Math.round(s.count / total * 100) : 0;
+    return `
+      <div class="funnel-step ${s.key}">
+        <span class="fs-label">${s.label}</span>
+        <span class="fs-count">${s.count}</span>
+        <span style="font-size:0.75rem;color:#888;min-width:36px;text-align:right">${pct}%</span>
+      </div>`;
+  }).join('') + `
+    <div style="font-size:0.78rem;color:#888;margin-top:8px;">
+      Total leads: ${total} &nbsp;·&nbsp;
+      Conversion rate: ${total ? Math.round((f.converted || 0) / total * 100) : 0}%
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadClients() {
+  try {
+    const res  = await fetch(`${BACKEND_URL}/admin/clients`, { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    const rows = await res.json();
+    renderClientsTable(rows);
+  } catch (err) {
+    console.error('[Clients]', err);
+    document.getElementById('clients-body').innerHTML =
+      '<tr><td colspan="7" class="notice">Could not load clients.</td></tr>';
+  }
+}
+
+function renderClientsTable(rows) {
+  const tbody = document.getElementById('clients-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="notice">No clients yet. Add rows to the clients table in the database.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((r, i) => {
+    const date = r.created_at ? new Date(r.created_at).toLocaleDateString() : '–';
+    return `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escHtml(r.name)}</td>
+        <td><a href="mailto:${escHtml(r.email)}">${escHtml(r.email)}</a></td>
+        <td>${escHtml(r.phone || '–')}</td>
+        <td>${r.session_count ?? 0}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${escHtml(r.notes || '')}">${escHtml(r.notes || '–')}</td>
+        <td>${date}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TUTORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadTutors() {
+  try {
+    const res  = await fetch(`${BACKEND_URL}/admin/tutors`, { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    const rows = await res.json();
+    renderTutorsTable(rows);
+  } catch (err) {
+    console.error('[Tutors]', err);
+    document.getElementById('tutors-body').innerHTML =
+      '<tr><td colspan="7" class="notice">Could not load tutors.</td></tr>';
+  }
+}
+
+function renderTutorsTable(rows) {
+  const tbody = document.getElementById('tutors-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="notice">No tutors yet. Add rows to the tutors table in the database.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${escHtml(r.name)}</td>
+      <td><a href="mailto:${escHtml(r.email)}">${escHtml(r.email)}</a></td>
+      <td>${escHtml(r.phone || '–')}</td>
+      <td>${r.rate ? '$' + Number(r.rate).toFixed(2) : '–'}</td>
+      <td>${r.session_count ?? 0}</td>
+      <td><span class="tag ${r.active ? 'converted' : 'lost'}">${r.active ? 'Active' : 'Inactive'}</span></td>
+    </tr>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATABASE EXPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportDB() {
+  // Trigger a browser download by navigating to the export endpoint.
+  // The backend returns the SQLite file as an attachment.
+  // JWT is passed via a query param since we can't set headers on a navigation.
+  const token = getToken();
+  if (!token) { alert('Not logged in.'); return; }
+
+  // Create a hidden anchor and click it – cleanest cross-browser approach.
+  const a  = document.createElement('a');
+  a.href   = `${BACKEND_URL}/admin/db/export?token=${encodeURIComponent(token)}`;
+  a.target = '_blank';
+  a.click();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -685,7 +1014,7 @@ function escHtml(str) {
 (async function init() {
   // Pre-warm Render's free-tier server so it's ready by the time the user
   // types their password. Shows elapsed time so it doesn't look frozen.
-  const statusEl = document.getElementById('server-status');
+  const statusEl  = document.getElementById('server-status');
   const pingStart = Date.now();
 
   const pingTicker = setInterval(() => {

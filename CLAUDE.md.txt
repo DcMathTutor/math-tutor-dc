@@ -97,3 +97,51 @@ counter += 1  # increment counter
 # Good - explains why
 counter += 1  # track retries for backoff calculation
 
+
+---
+
+Math Tutor DC – Notes for Future Claude Instances
+==================================================
+
+ALWAYS work in the main directory (C:\Users\globo\Desktop\math-tutor-dc\),
+NOT in .claude/worktrees/. Never use git commands.
+
+Stack
+-----
+- Frontend: static HTML/CSS/JS on GitHub Pages (index.html, admin.html, tutors.html)
+- Backend:  Python/Flask on Render.com free tier (backend/app.py)
+- Email:    Resend API only – RESEND_API_KEY + EMAIL_TO. Never change this or suggest Gmail.
+- DB:       SQLAlchemy + SQLite (math_tutor.db, gitignored). Render free tier = ephemeral.
+
+Key constraints
+---------------
+- Render free tier cold-starts take 20–50s. Admin/tutor pages use fetchWithTimeout()
+  (55s, AbortController) plus an elapsed-time ticker on the login button. Keep this.
+- Passwords are bcrypt hashes stored in Render's dashboard only. Never in files.
+- JWT_SECRET is set in Render's dashboard only. Never in files.
+- GitHub Pages is public, so admin.html has <meta name="robots" content="noindex">.
+  The real security is the bcrypt/JWT backend, not obscurity.
+- `class` is a Python reserved word; the Lead model uses `course` internally but
+  to_dict() returns key "class" so existing JS works without changes.
+
+Database workflow (manual for now)
+-----------------------------------
+Data entry (clients, tutors, sessions, payments) is done outside the app:
+  1. Click "Export DB" in admin dashboard → downloads math_tutor.db
+  2. Edit with DB Browser for SQLite (free: https://sqlitebrowser.org/)
+  3. Re-upload via Render Shell before the next deploy (free tier is ephemeral)
+For durable storage: enable Render Persistent Disk + set DB_PATH=/data/math_tutor.db
+
+Auth pattern
+------------
+- Admin: POST /admin/login → JWT {admin:true, exp:+8h} → sessionStorage 'admin_token'
+- Tutor: POST /tutor/login → JWT {role:'tutor', exp:+12h} → sessionStorage 'tutor_token'
+- require_auth decorator checks both Authorization header AND ?token= query param
+  (query param needed for the /admin/db/export browser-navigation download)
+
+QR / source attribution
+------------------------
+- ?src= URL param → hidden form field → logged in leads.src
+- Sources list stored in localStorage (not backend) so additions survive page refresh
+- DEFAULT_SOURCES defined in admin.html JS; user can add more via the UI
+

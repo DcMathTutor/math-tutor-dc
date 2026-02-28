@@ -5,3 +5,4 @@ bcrypt
 PyJWT
 python-dotenv
 gunicorn
+sqlalchemy
