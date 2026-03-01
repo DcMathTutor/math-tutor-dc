@@ -413,7 +413,7 @@
       <p style="font-size:0.82rem;color:#555;margin-bottom:16px;">
         Each QR code encodes a URL with a <code>?src=</code> tag.
         When a visitor scans and submits the form, their source is silently logged.
-        Right-click a QR code or use <strong>Download</strong> to save as PNG.
+        Right-click a QR code to save it as an image.
       </p>
 
       <div class="qr-controls">
@@ -662,7 +662,6 @@ async function renderQRCodes() {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'qr-actions';
     actionsDiv.innerHTML = `
-      <button onclick="downloadQR('${escHtml(src.key)}','${escHtml(src.label)}')">Download PNG</button>
       <button class="remove-btn" onclick="removeSource('${escHtml(src.key)}')">Remove</button>
     `;
 
@@ -691,16 +690,6 @@ function copyLink(url, btn) {
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = orig; }, 1500);
   });
-}
-
-async function downloadQR(key, label) {
-  const url    = `${SITE_URL}?src=${encodeURIComponent(key)}`;
-  const canvas = document.createElement('canvas');
-  await QRCode.toCanvas(canvas, url, { width: 400, margin: 2, color: { dark: '#000', light: '#fff' } });
-  const link    = document.createElement('a');
-  link.download = `qr-${key}.png`;
-  link.href     = canvas.toDataURL('image/png');
-  link.click();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -983,18 +972,56 @@ function renderTutorsTable(rows) {
 // DATABASE EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function exportDB() {
-  // Trigger a browser download by navigating to the export endpoint.
-  // The backend returns the SQLite file as an attachment.
-  // JWT is passed via a query param since we can't set headers on a navigation.
+async function exportDB() {
+  // Use fetch + blob so we can set the Authorization header properly,
+  // show a real error message if the route is missing, and avoid
+  // exposing the JWT in the browser's URL bar / server logs.
   const token = getToken();
   if (!token) { alert('Not logged in.'); return; }
 
-  // Create a hidden anchor and click it – cleanest cross-browser approach.
-  const a  = document.createElement('a');
-  a.href   = `${BACKEND_URL}/admin/db/export?token=${encodeURIComponent(token)}`;
-  a.target = '_blank';
-  a.click();
+  const btn      = document.getElementById('export-db-btn');
+  const origText = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = '⏳ Exporting…';
+
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_URL}/admin/db/export`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (res.status === 401) { logout(); return; }
+
+    if (!res.ok) {
+      // Try to parse a JSON error body; fall back to a plain message.
+      const ct  = res.headers.get('content-type') || '';
+      let errMsg;
+      if (ct.includes('application/json')) {
+        const err = await res.json().catch(() => ({}));
+        errMsg = err.error || `HTTP ${res.status}`;
+      } else {
+        errMsg = `HTTP ${res.status} – route not found. Make sure the latest backend code has been deployed on Render.`;
+      }
+      alert('Export failed: ' + errMsg);
+      return;
+    }
+
+    // Stream the file into a blob and trigger a browser download.
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'math_tutor.db';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+    console.error('[ExportDB]', err);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = origText;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

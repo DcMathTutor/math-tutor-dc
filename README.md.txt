@@ -74,18 +74,74 @@ Tables:
                        columns: category, description, amount, date
 
 How to enter data (manual workflow for now):
-  1. Leads come in automatically via the contact form.
-  2. Use "Export DB" button in the admin dashboard to download math_tutor.db.
-  3. Open it with DB Browser for SQLite (free app: https://sqlitebrowser.org/).
-  4. Add/edit clients, tutors, sessions, payments, expenses.
-  5. Re-upload via Render Shell: drag the file or use the Render CLI.
+
+  Leads come in automatically via the contact form and appear instantly in the
+  Admin dashboard. Everything else (clients, tutors, sessions, payments,
+  expenses) is entered manually by editing the SQLite database file.
+
+  Step-by-step:
+
+  1. Log in at admin.html and click "⬇ Export DB" (top-right header).
+     This downloads math_tutor.db to your computer.
+
+     NOTE: If "Export DB" returns an error, the backend may not yet have the
+     export route deployed. Trigger a manual redeploy on Render (Dashboard →
+     your service → Manual Deploy → Deploy latest commit), wait for it to
+     finish, then try again.
+
+  2. Open math_tutor.db in DB Browser for SQLite (free):
+       https://sqlitebrowser.org/
+
+  3. Click the "Browse Data" tab and pick the table you want to edit:
+
+     clients
+       Add a row here when a lead converts to a paying client.
+       Required: name, email
+       Optional: phone, notes
+
+     tutors
+       One row per tutor. Set active=1 (active) or active=0 (inactive).
+       Required: name, email
+       Optional: phone, rate ($/hr default), notes
+
+     tutoring_sessions
+       One row per session delivered. Links a client and a tutor.
+       Required: client_id (from clients table), tutor_id (from tutors table),
+                 date (YYYY-MM-DD)
+       Optional: course, duration_hrs (default 1.0), client_rate ($/hr charged),
+                 tutor_rate ($/hr paid), notes
+
+     payments
+       Record cash movements here to drive the Financial Overview.
+         direction='in'  → money received FROM a client  (counts as Revenue)
+         direction='out' → money paid TO a tutor          (counts as COGS)
+       Required: amount, direction ('in' or 'out'), date (YYYY-MM-DD)
+       Optional: session_id (links payment to a session), method (zelle/cash/venmo), notes
+
+     expenses
+       Operating costs not tied to a specific session (marketing, tools, etc.).
+       Required: amount, date (YYYY-MM-DD)
+       Optional: category (marketing|tools|travel|misc), description, notes
+
+  4. After making edits, click File → Write Changes in DB Browser.
+
+  5. Re-upload the file to Render via the Shell tab:
+       a. Go to your Render service → Shell tab (top nav).
+       b. Run:  cat > math_tutor.db
+       c. Open a second terminal, run:  base64 math_tutor.db | pbcopy  (Mac)
+                                    or: base64 math_tutor.db  (copy the output)
+       d. Paste into the Render shell and press Ctrl+D.
+
+     Easier alternative (Render Persistent Disk):
+       Enable a Persistent Disk in your Render service settings.
+       Set DB_PATH=/data/math_tutor.db in Environment variables.
+       The DB then survives redeploys and can be edited via the Shell directly.
 
 IMPORTANT – Render free tier:
-  The SQLite file is ephemeral and resets on every redeploy. Download a copy
-  before deploying. For durable storage, enable Render Persistent Disk and set
-  DB_PATH=/data/math_tutor.db in Render's environment dashboard.
+  The SQLite file resets to empty on every redeploy unless you use Persistent
+  Disk. Always export a copy before deploying new backend code.
 
-DB file is gitignored (*.db) – it never gets committed.
+DB file is gitignored (*.db) – it is never committed to git.
 
 
 Admin page
@@ -102,7 +158,7 @@ Features:
   - Clients: table of all clients with session counts
   - Tutors: table of all tutors with rates and session counts
   - QR Code Generator: pre-built codes for Flyer A/B, Instagram, Facebook, Google, Referral
-    Two-field form (descriptive name + short key); codes downloadable as high-res PNG
+    Two-field form (descriptive name + short key); right-click a QR code to save as image
   - Source breakdown table with lead counts per campaign
   - Export DB button (top right): downloads the SQLite file from the server
 

@@ -128,7 +128,8 @@
         }
         .carousel-arrow {
             background: #000;
-            border: 1px solid #000;
+            color: #fff;
+            border: none;
             font-size: 2rem;
             line-height: 1;
             width: 40px;
@@ -143,12 +144,29 @@
             padding: 0;
         }
         .carousel-arrow:hover:not(:disabled) {
-            background: #000;
+            background: #333;
             color: #fff;
         }
         .carousel-arrow:disabled {
             opacity: 0.2;
             cursor: default;
+        }
+        /* Mobile: show 1 card at a time */
+        @media (max-width: 640px) {
+            .tutors-section {
+                padding: 20px 12px 30px 12px;
+            }
+            .tutor {
+                flex: 0 0 100%;
+            }
+            .tutor img {
+                height: 240px;
+            }
+            .carousel-arrow {
+                width: 36px;
+                height: 36px;
+                font-size: 1.6rem;
+            }
         }
         /* Courses */
         .courses {
@@ -177,7 +195,7 @@
 </header>
 
 <section class="form-section">
-    <h2>Request Tutoring</h2>
+    <h2>Request Private Tutoring</h2>
     <form id="tutoring-form">
         <input type="text" name="name" placeholder="Your Name" required />
         <input type="email" name="email" placeholder="Your Email" required />
@@ -194,7 +212,25 @@
             <option>Online (Zoom)</option>
         </select>
 
-        <input type="text" name="time" placeholder="Preferred time(s)" required />
+        <select name="time" required>
+            <option value="">Preferred start time</option>
+            <option>7:00 AM</option>
+            <option>8:00 AM</option>
+            <option>9:00 AM</option>
+            <option>10:00 AM</option>
+            <option>11:00 AM</option>
+            <option>12:00 PM</option>
+            <option>1:00 PM</option>
+            <option>2:00 PM</option>
+            <option>3:00 PM</option>
+            <option>4:00 PM</option>
+            <option>5:00 PM</option>
+            <option>6:00 PM</option>
+            <option>7:00 PM</option>
+            <option>8:00 PM</option>
+            <option>9:00 PM</option>
+            <option>10:00 PM</option>
+        </select>
 
         <textarea name="message" rows="4" placeholder="Any additional details..." required></textarea>
 
@@ -211,10 +247,10 @@
 <section class="rates">
     <h2>Rates</h2>
     <div class="rate-box">
-        <strong>$35/hr In-Person or Online</strong>
+        <strong>$40/hr In-Person or Online</strong>
     </div>
     <div class="rate-box">
-        <strong>$120 for 4 hour bundle deal</strong>
+        <strong>$140 for 4 hour bundle deal</strong>
     </div>
     <div class="rate-box">
         <strong>$20 Resume review</strong>
@@ -308,7 +344,6 @@
     "Calculus I–III",
     "Differential Equations",
     "Linear Algebra",
-    "Discrete Math",
     "Probability & Statistics",
     "SAT / ACT / GRE Math",
     "College-level math courses",
@@ -387,12 +422,16 @@
     const track = document.getElementById('carousel-track');
     const prevBtn = document.getElementById('carousel-prev');
     const nextBtn = document.getElementById('carousel-next');
-    const VISIBLE = 3;
     let currentIndex = 0;
+
+    function getVisibleCount() {
+      return window.innerWidth <= 640 ? 1 : 3;
+    }
 
     function updateCarousel() {
       const cards = track.querySelectorAll('.tutor');
       const total = cards.length;
+      const VISIBLE = getVisibleCount();
       const maxIndex = Math.max(0, total - VISIBLE);
       currentIndex = Math.min(Math.max(currentIndex, 0), maxIndex);
       if (cards.length > 0) {
@@ -406,7 +445,7 @@
 
     prevBtn.addEventListener('click', function() { currentIndex--; updateCarousel(); });
     nextBtn.addEventListener('click', function() { currentIndex++; updateCarousel(); });
-    window.addEventListener('resize', updateCarousel);
+    window.addEventListener('resize', function() { currentIndex = 0; updateCarousel(); });
     updateCarousel();
 
     // Populate dropdown and course list from shared COURSE_LIST
