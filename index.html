@@ -249,6 +249,10 @@
             <!-- Hourly options 7 AM – 10 PM populated by JS -->
         </select>
 
+        <label for="field-referred">Referred by (optional)</label>
+        <input type="text" id="field-referred" name="referred_by"
+               placeholder="Name of the person who referred you (if any)">
+
         <label for="field-message">Additional Information</label>
         <textarea id="field-message" name="message" rows="4"
                   placeholder="Tell us about your goals, schedule constraints, or anything else we should know."></textarea>
@@ -261,15 +265,16 @@
 <section class="rates">
     <h2>Rates</h2>
     <div class="rate-box">
-        <strong>$40/hr In-Person or Online</strong>
+        <strong>$50/hr &mdash; In-Person or Online</strong>
     </div>
     <div class="rate-box">
-        <strong>$140 for 4 hour bundle deal</strong>
+        <strong>$180 &mdash; 4-Session Bundle</strong>
+        <span style="display:block;font-weight:400;color:#444;font-size:0.9rem;margin-top:4px;">$45/hr &mdash; save $20</span>
     </div>
     <div class="rate-box">
-        <strong>$20 Resume review</strong>
+        <strong>$50 &mdash; Resume / Personal Statement Review</strong>
     </div>
-    <p>Discounts available for group sessions.</p>
+    <p>Group session discounts available &mdash; contact us for details.</p>
 </section>
 
 <section class="tutors-section">
@@ -382,14 +387,15 @@
     status.style.color = '#000';
 
     const data = {
-      name:    form.querySelector('[name="name"]').value.trim(),
-      email:   form.querySelector('[name="email"]').value.trim(),
-      phone:   form.querySelector('[name="phone"]').value.trim(),
-      class:   form.querySelector('[name="class"]').value,
-      mode:    form.querySelector('[name="mode"]').value,
-      time:    form.querySelector('[name="time"]').value,
-      message: form.querySelector('[name="message"]').value.trim(),
-      src:     form.querySelector('[name="src"]').value,
+      name:        form.querySelector('[name="name"]').value.trim(),
+      email:       form.querySelector('[name="email"]').value.trim(),
+      phone:       form.querySelector('[name="phone"]').value.trim(),
+      class:       form.querySelector('[name="class"]').value,
+      mode:        form.querySelector('[name="mode"]').value,
+      time:        form.querySelector('[name="time"]').value,
+      message:     form.querySelector('[name="message"]').value.trim(),
+      src:         form.querySelector('[name="src"]').value,
+      referred_by: form.querySelector('[name="referred_by"]').value.trim(),
     };
 
     try {

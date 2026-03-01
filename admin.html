@@ -70,12 +70,13 @@
       font-family: inherit;
     }
     #logout-btn:hover { background: #fff; color: #000; }
-    #export-db-btn, #sync-btn {
+    #export-db-btn, #sync-btn, #log-session-btn, #log-payment-btn {
       background: transparent; color: #aaa; border: 1px solid #555;
       padding: 6px 14px; border-radius: 4px; font-size: 0.82rem;
       font-family: inherit;
     }
-    #export-db-btn:hover, #sync-btn:hover { color: #fff; border-color: #fff; }
+    #export-db-btn:hover, #sync-btn:hover,
+    #log-session-btn:hover, #log-payment-btn:hover { color: #fff; border-color: #fff; }
     #sync-btn:disabled { opacity: 0.5; cursor: default; }
 
     .dash-body { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
@@ -240,11 +241,61 @@
       border-radius: 4px;
     }
 
+    /* ── Modal overlay ───────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; border: 1px solid #000;
+      padding: 28px 32px; max-width: 500px; width: 90%;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-box h3 { margin: 0 0 20px; font-size: 1.1rem; font-weight: 700; }
+    .modal-box label {
+      display: block; font-size: 0.8rem; font-weight: 600;
+      margin: 12px 0 3px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .modal-box input, .modal-box select, .modal-box textarea {
+      width: 100%; padding: 9px 10px; border: 1px solid #ccc;
+      border-radius: 4px; font-size: 0.9rem; font-family: inherit;
+      box-sizing: border-box; background: #fff;
+    }
+    .modal-box input:focus, .modal-box select:focus,
+    .modal-box textarea:focus { border-color: #000; outline: none; }
+    .modal-box textarea { resize: vertical; min-height: 70px; }
+    .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions button {
+      padding: 9px 20px; border-radius: 4px;
+      font-size: 0.9rem; font-family: inherit; cursor: pointer;
+    }
+    .btn-primary { background: #000; color: #fff; border: none; }
+    .btn-primary:hover { background: #333; }
+    .btn-cancel { background: transparent; border: 1px solid #999; color: #555; }
+    .btn-cancel:hover { border-color: #000; color: #000; }
+    .modal-status { font-size: 0.85rem; margin-top: 10px; min-height: 1.2em; }
+    /* ── Action buttons in tables ────────────────────────────── */
+    .tbl-btn {
+      font-size: 0.72rem; padding: 3px 8px; border-radius: 3px;
+      font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .tbl-btn.activate   { background: #000; color: #fff; border: 1px solid #000; }
+    .tbl-btn.deactivate { background: transparent; color: #c00; border: 1px solid #c00; }
+    .tbl-btn:disabled   { opacity: 0.5; cursor: default; }
+    /* status select in leads table */
+    .status-sel {
+      font-size: 0.78rem; padding: 2px 4px; border: 1px solid #ccc;
+      border-radius: 3px; background: #fff; font-family: inherit;
+    }
     /* ── Responsive ──────────────────────────────────────────── */
     @media (max-width: 600px) {
       #dash-header { flex-wrap: wrap; gap: 10px; }
       .stat-card .value { font-size: 1.6rem; }
       .fin-layout { flex-direction: column; }
+      .modal-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -278,6 +329,8 @@
       <span>Admin Dashboard</span>
     </div>
     <div class="header-actions">
+      <button id="log-session-btn" onclick="openModal('session-modal')" title="Log a completed tutoring session">+ Session</button>
+      <button id="log-payment-btn" onclick="openModal('payment-modal')" title="Log a Zelle payment (in or out)">$ Payment</button>
       <button id="sync-btn" onclick="syncSheets()" title="Import new tutor applications from Google Sheets into the Tutors table">⟳ Sync Tally</button>
       <button id="export-db-btn" onclick="exportDB()" title="Download SQLite database file">⬇ Export DB</button>
       <button id="logout-btn" onclick="logout()">Log out</button>
@@ -398,7 +451,7 @@
         <table id="tutors-table">
           <thead>
             <tr>
-              <th>#</th><th>Name</th><th>Email</th><th>Phone</th>
+              <th>#</th><th>Name</th><th>Email</th><th>Subjects</th>
               <th>Rate ($/hr)</th><th>Sessions</th><th>Status</th>
             </tr>
           </thead>
@@ -453,6 +506,107 @@
 
   </div><!-- .dash-body -->
 </div><!-- #dashboard -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LOG SESSION MODAL
+     Logs a completed session to tutoring_sessions table.
+     Defaults to $50 client rate and $35 tutor rate.
+═══════════════════════════════════════════════════════════════ -->
+<div id="session-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('session-modal')">
+  <div class="modal-box">
+    <h3>Log Session</h3>
+    <div class="modal-row">
+      <div>
+        <label>Client ID *<br><small style="font-weight:400;text-transform:none;">(from Clients table)</small></label>
+        <input type="number" id="ms-client" placeholder="e.g. 3" min="1">
+      </div>
+      <div>
+        <label>Tutor ID *<br><small style="font-weight:400;text-transform:none;">(from Tutors table)</small></label>
+        <input type="number" id="ms-tutor" placeholder="e.g. 1" min="1">
+      </div>
+    </div>
+    <label>Course / Subject</label>
+    <input type="text" id="ms-course" placeholder="e.g. Calculus I–III">
+    <label>Date *</label>
+    <input type="date" id="ms-date">
+    <div class="modal-row">
+      <div>
+        <label>Duration (hrs)</label>
+        <input type="number" id="ms-duration" value="1.0" step="0.5" min="0.5">
+      </div>
+      <div>
+        <label>Client Rate ($/hr)</label>
+        <input type="number" id="ms-client-rate" value="50" step="5" min="0">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div>
+        <label>Tutor Rate ($/hr)</label>
+        <input type="number" id="ms-tutor-rate" value="35" step="5" min="0">
+      </div>
+      <div>
+        <label>Margin Preview</label>
+        <input type="text" id="ms-margin-preview" readonly
+               style="background:#f4f4f4;color:#555;" placeholder="$15.00 / 30%">
+      </div>
+    </div>
+    <label>Notes</label>
+    <textarea id="ms-notes" placeholder="Optional: topics covered, progress notes…"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('session-modal')">Cancel</button>
+      <button class="btn-primary" onclick="submitSession()">Save Session</button>
+    </div>
+    <div class="modal-status" id="ms-status"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LOG PAYMENT MODAL
+     Logs a Zelle payment in or out to the payments table.
+═══════════════════════════════════════════════════════════════ -->
+<div id="payment-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('payment-modal')">
+  <div class="modal-box">
+    <h3>Log Payment</h3>
+    <label>Direction *</label>
+    <select id="mp-direction">
+      <option value="in">In — Client paid us (Revenue)</option>
+      <option value="out">Out — We paid tutor (COGS)</option>
+    </select>
+    <div class="modal-row">
+      <div>
+        <label>Amount ($) *</label>
+        <input type="number" id="mp-amount" placeholder="50.00" step="0.01" min="0.01">
+      </div>
+      <div>
+        <label>Date *</label>
+        <input type="date" id="mp-date">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div>
+        <label>Method</label>
+        <select id="mp-method">
+          <option value="zelle">Zelle</option>
+          <option value="venmo">Venmo</option>
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+        </select>
+      </div>
+      <div>
+        <label>Session ID (optional)</label>
+        <input type="number" id="mp-session" placeholder="Link to a session">
+      </div>
+    </div>
+    <label>Zelle Reference / Notes</label>
+    <textarea id="mp-notes" rows="2"
+              placeholder="e.g. MTD Williams Calculus 0315"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('payment-modal')">Cancel</button>
+      <button class="btn-primary" onclick="submitPayment()">Save Payment</button>
+    </div>
+    <div class="modal-status" id="mp-status"></div>
+  </div>
+</div>
 
 
 <script>
@@ -792,15 +946,23 @@ function renderLeadsTable(rows) {
     const srcCls = src === 'direct' ? 'direct' : src.startsWith('flyer') ? 'flyer' : 'social';
     const status = r.status || 'new';
     const date   = r.created_at ? new Date(r.created_at).toLocaleDateString() : '–';
+    const ref    = r.referred_by ? ` · ref: ${escHtml(r.referred_by)}` : '';
     return `
       <tr>
         <td>${rows.length - i}</td>
-        <td>${escHtml(r.name)}</td>
+        <td>${escHtml(r.name)}${ref ? `<br><small style="color:#888;font-size:0.72rem;">${ref}</small>` : ''}</td>
         <td><a href="mailto:${escHtml(r.email)}">${escHtml(r.email)}</a></td>
         <td>${escHtml(r.class || '–')}</td>
         <td>${escHtml(r.mode  || '–')}</td>
         <td><span class="tag ${srcCls}">${escHtml(src)}</span></td>
-        <td><span class="tag ${escHtml(status)}">${escHtml(status)}</span></td>
+        <td>
+          <select class="status-sel" onchange="updateLeadStatus(${r.id}, this.value)">
+            <option value="new"       ${status === 'new'       ? 'selected' : ''}>New</option>
+            <option value="contacted" ${status === 'contacted' ? 'selected' : ''}>Contacted</option>
+            <option value="converted" ${status === 'converted' ? 'selected' : ''}>Converted</option>
+            <option value="lost"      ${status === 'lost'      ? 'selected' : ''}>Lost</option>
+          </select>
+        </td>
         <td>${date}</td>
       </tr>`;
   }).join('');
@@ -958,16 +1120,27 @@ function renderTutorsTable(rows) {
     tbody.innerHTML = '<tr><td colspan="7" class="notice">No tutors yet. Add rows to the tutors table in the database.</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map((r, i) => `
+  tbody.innerHTML = rows.map((r, i) => {
+    const subjects = r.subjects ? escHtml(r.subjects) : '–';
+    const isActive = !!r.active;
+    const btnClass = isActive ? 'deactivate' : 'activate';
+    const btnLabel = isActive ? 'Deactivate' : 'Activate';
+    return `
     <tr>
       <td>${i + 1}</td>
       <td>${escHtml(r.name)}</td>
       <td><a href="mailto:${escHtml(r.email)}">${escHtml(r.email)}</a></td>
-      <td>${escHtml(r.phone || '–')}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="${escHtml(r.subjects || '')}">${subjects}</td>
       <td>${r.rate ? '$' + Number(r.rate).toFixed(2) : '–'}</td>
       <td>${r.session_count ?? 0}</td>
-      <td><span class="tag ${r.active ? 'converted' : 'lost'}">${r.active ? 'Active' : 'Inactive'}</span></td>
-    </tr>`).join('');
+      <td>
+        <button class="tbl-btn ${btnClass}" onclick="toggleTutor(${r.id}, this)">
+          ${btnLabel}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1081,6 +1254,223 @@ function escHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODAL HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('open');
+  // Pre-fill today's date on first open
+  const today = new Date().toISOString().split('T')[0];
+  if (id === 'session-modal') {
+    const df = document.getElementById('ms-date');
+    if (!df.value) df.value = today;
+    updateMarginPreview();
+  }
+  if (id === 'payment-modal') {
+    const df = document.getElementById('mp-date');
+    if (!df.value) df.value = today;
+  }
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+
+// Live margin preview – recalculates whenever rate fields change
+function updateMarginPreview() {
+  const clientRate = parseFloat(document.getElementById('ms-client-rate').value) || 0;
+  const tutorRate  = parseFloat(document.getElementById('ms-tutor-rate').value)  || 0;
+  const margin     = clientRate - tutorRate;
+  const pct        = clientRate > 0 ? Math.round(margin / clientRate * 100) : 0;
+  document.getElementById('ms-margin-preview').value =
+    `$${margin.toFixed(2)}/hr  ·  ${pct}% margin`;
+}
+
+// Wire up live margin preview to the rate fields
+['ms-client-rate', 'ms-tutor-rate'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateMarginPreview);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG SESSION (modal submit)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function submitSession() {
+  const statusEl = document.getElementById('ms-status');
+  statusEl.textContent = '';
+
+  const clientId   = document.getElementById('ms-client').value.trim();
+  const tutorId    = document.getElementById('ms-tutor').value.trim();
+  const date       = document.getElementById('ms-date').value;
+  const course     = document.getElementById('ms-course').value.trim();
+  const duration   = parseFloat(document.getElementById('ms-duration').value)    || 1.0;
+  const clientRate = parseFloat(document.getElementById('ms-client-rate').value) || 50;
+  const tutorRate  = parseFloat(document.getElementById('ms-tutor-rate').value)  || 35;
+  const notes      = document.getElementById('ms-notes').value.trim();
+
+  if (!clientId || !tutorId || !date) {
+    statusEl.style.color = '#c00';
+    statusEl.textContent = 'Client ID, Tutor ID, and Date are required.';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/sessions`, {
+      method:  'POST',
+      headers: authHeaders(),
+      body:    JSON.stringify({
+        client_id:    parseInt(clientId, 10),
+        tutor_id:     parseInt(tutorId,  10),
+        date, course,
+        duration_hrs: duration,
+        client_rate:  clientRate,
+        tutor_rate:   tutorRate,
+        notes,
+      }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      statusEl.style.color = '#c00';
+      statusEl.textContent = data.error || `Error ${res.status}`;
+      return;
+    }
+
+    statusEl.style.color = '#1a7a1a';
+    statusEl.textContent = `✓ Session #${data.id} saved.`;
+
+    // Reset form fields
+    ['ms-client','ms-tutor','ms-course','ms-notes'].forEach(fid =>
+      { document.getElementById(fid).value = ''; });
+    document.getElementById('ms-duration').value    = '1.0';
+    document.getElementById('ms-client-rate').value = '50';
+    document.getElementById('ms-tutor-rate').value  = '35';
+    updateMarginPreview();
+
+    loadFinancials();  // refresh P&L silently
+    setTimeout(() => closeModal('session-modal'), 1500);
+  } catch (err) {
+    statusEl.style.color = '#c00';
+    statusEl.textContent = 'Failed: ' + err.message;
+    console.error('[SubmitSession]', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOG PAYMENT (modal submit)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function submitPayment() {
+  const statusEl = document.getElementById('mp-status');
+  statusEl.textContent = '';
+
+  const direction = document.getElementById('mp-direction').value;
+  const amount    = document.getElementById('mp-amount').value.trim();
+  const date      = document.getElementById('mp-date').value;
+  const method    = document.getElementById('mp-method').value;
+  const sessionId = document.getElementById('mp-session').value.trim();
+  const notes     = document.getElementById('mp-notes').value.trim();
+
+  if (!amount || !date) {
+    statusEl.style.color = '#c00';
+    statusEl.textContent = 'Amount and Date are required.';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/payments`, {
+      method:  'POST',
+      headers: authHeaders(),
+      body:    JSON.stringify({
+        direction,
+        amount:     parseFloat(amount),
+        date, method,
+        session_id: sessionId ? parseInt(sessionId, 10) : null,
+        notes,
+      }),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      statusEl.style.color = '#c00';
+      statusEl.textContent = data.error || `Error ${res.status}`;
+      return;
+    }
+
+    statusEl.style.color = '#1a7a1a';
+    statusEl.textContent = `✓ Payment #${data.id} saved.`;
+
+    document.getElementById('mp-amount').value  = '';
+    document.getElementById('mp-session').value = '';
+    document.getElementById('mp-notes').value   = '';
+
+    loadFinancials();  // refresh P&L silently
+    setTimeout(() => closeModal('payment-modal'), 1500);
+  } catch (err) {
+    statusEl.style.color = '#c00';
+    statusEl.textContent = 'Failed: ' + err.message;
+    console.error('[SubmitPayment]', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE LEAD STATUS (inline dropdown in leads table)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function updateLeadStatus(leadId, newStatus) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/leads/${leadId}/status`, {
+      method:  'PATCH',
+      headers: authHeaders(),
+      body:    JSON.stringify({ status: newStatus }),
+    });
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert('Could not update status: ' + (data.error || `HTTP ${res.status}`));
+      await loadSubmissions();  // revert UI to server state on error
+      return;
+    }
+    // Silently refresh funnel + stats to reflect new status
+    loadFinancials();
+    loadStats();
+  } catch (err) {
+    console.error('[UpdateLeadStatus]', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOGGLE TUTOR ACTIVE / INACTIVE
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function toggleTutor(tutorId, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/tutors/${tutorId}/active`, {
+      method:  'PATCH',
+      headers: authHeaders(),
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('Could not update tutor: ' + (data.error || `HTTP ${res.status}`));
+      btn.disabled = false;
+      return;
+    }
+    await loadTutors();  // re-render table showing new active state
+  } catch (err) {
+    console.error('[ToggleTutor]', err);
+    btn.disabled = false;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

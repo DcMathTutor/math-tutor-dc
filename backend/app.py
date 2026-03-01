@@ -112,10 +112,11 @@ class Lead(Base):
     mode       = Column(String,   default="")   # online / in-person
     time_pref  = Column(String,   default="")
     message    = Column(Text,     default="")
-    src        = Column(String,   default="")   # QR / campaign attribution key
-    status     = Column(String,   default="new")  # new | contacted | converted | lost
-    created_at = Column(DateTime, default=datetime.utcnow)
-    tally_id   = Column(String,   nullable=True, unique=False)  # Tally submission ID (dedup key)
+    src         = Column(String,   default="")    # QR / campaign attribution key
+    referred_by = Column(String,   default="")    # Name of person who referred this client
+    status      = Column(String,   default="new") # new | contacted | converted | lost
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    tally_id    = Column(String,   nullable=True, unique=False)  # Tally submission ID (dedup key)
 
     # Trigger: lead has been converted to a paying client
     # Why: links the original inquiry to the client row without losing lead history
@@ -130,7 +131,8 @@ class Lead(Base):
             # Key is "class" (not "course") so existing admin.html JS works unchanged
             "class": self.course,
             "mode": self.mode, "time": self.time_pref, "message": self.message,
-            "src": self.src, "status": self.status, "client_id": self.client_id,
+            "src": self.src, "referred_by": self.referred_by,
+            "status": self.status, "client_id": self.client_id,
             "tally_id": self.tally_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -290,6 +292,7 @@ def run_migrations(eng):
     """
     stmts = [
         "ALTER TABLE leads   ADD COLUMN tally_id            VARCHAR",
+        "ALTER TABLE leads   ADD COLUMN referred_by         VARCHAR DEFAULT ''",
         "ALTER TABLE tutors  ADD COLUMN subjects            TEXT    DEFAULT ''",
         "ALTER TABLE tutors  ADD COLUMN earliest_available  VARCHAR DEFAULT ''",
         "ALTER TABLE tutors  ADD COLUMN tally_id            VARCHAR",
@@ -331,10 +334,20 @@ def check_rate_limit(ip):
 
 
 # =============================================================================
-# CLIENT EMAIL DRAFT TEMPLATE
+# RATES & CLIENT EMAIL DRAFT TEMPLATE
 # =============================================================================
-# This is the draft email included at the bottom of every new-lead notification.
-# Edit the body below to change the default message sent to new clients.
+#
+# CLIENT_HOURLY_RATE is the rate shown to clients in the draft email.
+# It is separate from the tutor's internal pay rate (stored on the Tutor row).
+# Update this number when you change your published price.
+#
+CLIENT_HOURLY_RATE = 50  # $/hr charged to clients
+
+# This draft email is included at the bottom of every new-lead notification.
+# Copy/paste it into your inbox and send to the client.
+#
+# *** EDIT THIS TO CHANGE THE EMAIL FORMAT ***
+# See README → "Client email draft template" to find this section quickly.
 #
 # Supported placeholders (all safe to leave in – missing values show as "—"):
 #   {client_name}     Lead's full name
@@ -343,22 +356,23 @@ def check_rate_limit(ip):
 #   {time_pref}       Their preferred start time (e.g. "3:00 PM")
 #   {tutor_name}      Matched tutor's name
 #   {tutor_subjects}  Tutor's listed subjects
-#   {tutor_rate}      Tutor's hourly rate (number)
-#
-# See README → "Client email draft template" to find this section quickly.
+#   {client_rate}     Your hourly rate charged to the client (CLIENT_HOURLY_RATE above)
 # =============================================================================
 
 CLIENT_EMAIL_DRAFT = """\
 Hi {client_name},
 
-Thank you for reaching out to Math Tutor DC! We received your request for \
-help with {course} and we're excited to connect you with a tutor.
+Great news — we reviewed your request for {course} tutoring and we have a \
+match ready for you.
 
-We'd like to match you with {tutor_name}, who specializes in {tutor_subjects} \
-and is available for {mode} sessions starting at {time_pref}.
+We'd like to pair you with {tutor_name}, who specializes in {tutor_subjects}.
 
-Our rate is ${tutor_rate}/hr. Please reply to confirm your first session, or \
-let us know if you have any questions!
+Here's how it works:
+  1. Reply with two or three times that work for you this week.
+  2. We'll confirm the session and send Zelle payment instructions.
+  3. Payment of ${client_rate}/hr is due before the session ({mode}).
+  4. Once payment is confirmed, we'll send your tutor's contact info \
+so you can connect directly.
 
 Looking forward to working with you,
 Math Tutor DC
@@ -487,12 +501,12 @@ def send_email_via_resend(name, email, phone, course, mode, time_pref, message, 
     # ── Draft email to client ────────────────────────────────────────────────
     draft_body = CLIENT_EMAIL_DRAFT.format(
         client_name    = name,
-        course         = course   or "your subject",
-        mode           = mode     or "in-person or online",
+        course         = course    or "your subject",
+        mode           = mode      or "in-person or online",
         time_pref      = time_pref or "your preferred time",
         tutor_name     = tutor_name,
         tutor_subjects = tutor_subjects,
-        tutor_rate     = tutor_rate,
+        client_rate    = CLIENT_HOURLY_RATE,  # what we charge the client (not tutor pay)
     )
     draft_block = (
         f"\n{SEP}\n"
@@ -565,16 +579,17 @@ def contact():
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    name      = data["name"]
-    email     = data["email"]
-    phone     = data["phone"]
-    course    = data["class"]
-    mode      = data["mode"]
-    time_pref = data["time"]
-    message   = data["message"]
-    src       = data.get("src", "")[:64]  # optional; capped to prevent abuse
+    name        = data["name"]
+    email       = data["email"]
+    phone       = data["phone"]
+    course      = data["class"]
+    mode        = data["mode"]
+    time_pref   = data["time"]
+    message     = data["message"]
+    src         = data.get("src", "")[:64]        # optional; capped to prevent abuse
+    referred_by = data.get("referred_by", "")[:128]  # optional referral attribution
 
-    print(f"[CONTACT] {name} <{email}> | course={course} | src={src or 'direct'} | IP={ip}")
+    print(f"[CONTACT] {name} <{email}> | course={course} | src={src or 'direct'} | ref={referred_by or '–'} | IP={ip}")
 
     tutor = None
     try:
@@ -582,7 +597,8 @@ def contact():
             tutor = match_tutor(course, time_pref, db)
             lead  = Lead(
                 name=name, email=email, phone=phone, course=course,
-                mode=mode, time_pref=time_pref, message=message, src=src,
+                mode=mode, time_pref=time_pref, message=message,
+                src=src, referred_by=referred_by,
             )
             db.add(lead)
             db.commit()
@@ -1099,6 +1115,125 @@ def admin_sync_sheets():
         "errors":   errors,
         "message":  summary,
     })
+
+
+# =============================================================================
+# ADMIN ENDPOINTS – QUICK ACTIONS (no DB Browser needed)
+# =============================================================================
+
+@app.patch("/admin/leads/<int:lead_id>/status")
+@require_auth
+def update_lead_status(lead_id):
+    """Update a lead's status (new → contacted → converted → lost)."""
+    data   = request.get_json() or {}
+    status = data.get("status", "")
+    valid  = {"new", "contacted", "converted", "lost"}
+    if status not in valid:
+        return jsonify({"error": f"status must be one of: {', '.join(sorted(valid))}"}), 400
+    with SessionLocal() as db:
+        lead = db.get(Lead, lead_id)
+        if not lead:
+            return jsonify({"error": "Lead not found"}), 404
+        lead.status = status
+        db.commit()
+    print(f"[STATUS] Lead #{lead_id} → {status}")
+    return jsonify({"ok": True, "id": lead_id, "status": status})
+
+
+@app.patch("/admin/tutors/<int:tutor_id>/active")
+@require_auth
+def toggle_tutor_active(tutor_id):
+    """Toggle a tutor's active status. Returns the new active value."""
+    with SessionLocal() as db:
+        tutor = db.get(Tutor, tutor_id)
+        if not tutor:
+            return jsonify({"error": "Tutor not found"}), 404
+        tutor.active = not tutor.active
+        db.commit()
+        new_active = tutor.active
+    print(f"[TUTOR] Tutor #{tutor_id} active → {new_active}")
+    return jsonify({"ok": True, "id": tutor_id, "active": new_active})
+
+
+@app.post("/admin/sessions")
+@require_auth
+def create_session():
+    """
+    Log a completed tutoring session.  Links a client and tutor for financial tracking.
+    Required body fields: client_id, tutor_id, date (YYYY-MM-DD)
+    Optional: course, duration_hrs (default 1.0), client_rate, tutor_rate, notes
+    """
+    data    = request.get_json() or {}
+    missing = [f for f in ("client_id", "tutor_id", "date") if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+    try:
+        session_date = datetime.strptime(str(data["date"]), "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "date must be YYYY-MM-DD (e.g. 2025-03-15)"}), 400
+
+    with SessionLocal() as db:
+        session = TutoringSession(
+            client_id    = int(data["client_id"]),
+            tutor_id     = int(data["tutor_id"]),
+            course       = data.get("course", ""),
+            date         = session_date,
+            duration_hrs = float(data.get("duration_hrs", 1.0)),
+            client_rate  = float(data.get("client_rate", CLIENT_HOURLY_RATE)),
+            tutor_rate   = float(data.get("tutor_rate", 35.0)),
+            notes        = data.get("notes", ""),
+        )
+        db.add(session)
+        db.commit()
+        sid = session.id
+    print(f"[SESSION] Logged session #{sid}: client {data['client_id']} / tutor {data['tutor_id']} on {data['date']}")
+    return jsonify({"ok": True, "id": sid}), 201
+
+
+@app.post("/admin/payments")
+@require_auth
+def create_payment():
+    """
+    Log a cash movement.
+    Required body fields: amount (number), direction ('in' or 'out'), date (YYYY-MM-DD)
+    Optional: session_id, method (zelle|cash|venmo|card), notes (Zelle reference etc.)
+
+    direction='in'  → client paid us   (counts as Revenue)
+    direction='out' → we paid a tutor  (counts as COGS)
+    """
+    data      = request.get_json() or {}
+    direction = data.get("direction", "")
+    date_str  = data.get("date", "")
+    if direction not in ("in", "out"):
+        return jsonify({"error": "direction must be 'in' or 'out'"}), 400
+    if not date_str:
+        return jsonify({"error": "date is required (YYYY-MM-DD)"}), 400
+    try:
+        amount = float(data["amount"])
+        if amount <= 0:
+            raise ValueError
+    except (KeyError, ValueError, TypeError):
+        return jsonify({"error": "amount must be a positive number"}), 400
+    try:
+        payment_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "date must be YYYY-MM-DD (e.g. 2025-03-15)"}), 400
+
+    with SessionLocal() as db:
+        payment = Payment(
+            session_id = int(data["session_id"]) if data.get("session_id") else None,
+            amount     = amount,
+            direction  = direction,
+            method     = data.get("method", "zelle"),
+            date       = payment_date,
+            notes      = data.get("notes", ""),
+        )
+        db.add(payment)
+        db.commit()
+        pid = payment.id
+    label = "Revenue" if direction == "in" else "COGS"
+    print(f"[PAYMENT] Logged payment #{pid}: ${amount} {direction} ({label}) via {data.get('method','zelle')} on {date_str}")
+    return jsonify({"ok": True, "id": pid}), 201
 
 
 # =============================================================================
