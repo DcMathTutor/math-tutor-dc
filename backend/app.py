@@ -19,6 +19,7 @@
 #   POST /tutor/login         – Validate tutor password, return JWT
 
 import os
+import json
 import time
 import requests
 from datetime import datetime, timedelta, timezone
@@ -32,9 +33,17 @@ import jwt
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
-    Text, Date, DateTime, ForeignKey, func, select,
+    Text, Date, DateTime, ForeignKey, func, select, text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
+
+# Google Sheets API (optional – only required for /admin/sync-sheets)
+try:
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build as goog_build
+    HAS_GOOGLE_SHEETS = True
+except ImportError:
+    HAS_GOOGLE_SHEETS = False
 
 load_dotenv()
 
@@ -106,6 +115,7 @@ class Lead(Base):
     src        = Column(String,   default="")   # QR / campaign attribution key
     status     = Column(String,   default="new")  # new | contacted | converted | lost
     created_at = Column(DateTime, default=datetime.utcnow)
+    tally_id   = Column(String,   nullable=True, unique=False)  # Tally submission ID (dedup key)
 
     # Trigger: lead has been converted to a paying client
     # Why: links the original inquiry to the client row without losing lead history
@@ -121,6 +131,7 @@ class Lead(Base):
             "class": self.course,
             "mode": self.mode, "time": self.time_pref, "message": self.message,
             "src": self.src, "status": self.status, "client_id": self.client_id,
+            "tally_id": self.tally_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -156,10 +167,20 @@ class Tutor(Base):
     name       = Column(String,   nullable=False)
     email      = Column(String,   nullable=False)
     phone      = Column(String,   default="")
-    rate       = Column(Float,    default=0.0)  # default $/hr paid to this tutor
-    notes      = Column(Text,     default="")
-    active     = Column(Boolean,  default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    rate               = Column(Float,   default=0.0)   # default $/hr paid to this tutor
+    notes              = Column(Text,    default="")
+    active             = Column(Boolean, default=True)
+    # Subjects this tutor can teach – comma-separated course names.
+    # Example: "Calculus I–III, Linear Algebra, Probability & Statistics"
+    subjects           = Column(Text,    default="")
+    # Earliest time the tutor is available to start a session (24-hour "HH:MM" or
+    # 12-hour "H:MM AM/PM").  Used for matching against a lead's preferred start time.
+    # Example: "15:00"  means available from 3 PM onward.
+    earliest_available = Column(String,  default="")
+    # Tally Submission ID stored here so the sync endpoint can skip rows already
+    # imported without relying on email alone (supports re-submissions with edits).
+    tally_id           = Column(String,  nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("TutoringSession", back_populates="tutor")
 
@@ -168,6 +189,9 @@ class Tutor(Base):
             "id": self.id, "name": self.name, "email": self.email,
             "phone": self.phone, "rate": self.rate, "notes": self.notes,
             "active": self.active,
+            "subjects": self.subjects,
+            "earliest_available": self.earliest_available,
+            "tally_id": self.tally_id,
             "session_count": len(self.sessions) if self.sessions else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -257,6 +281,31 @@ class Expense(Base):
 Base.metadata.create_all(engine)
 
 
+def run_migrations(eng):
+    """
+    Add columns that are new since the initial schema.
+    SQLite's ALTER TABLE can only add columns, so this is safe to run on every
+    startup.  Each ALTER is wrapped in try/except so it's a no-op if the
+    column already exists.
+    """
+    stmts = [
+        "ALTER TABLE leads   ADD COLUMN tally_id            VARCHAR",
+        "ALTER TABLE tutors  ADD COLUMN subjects            TEXT    DEFAULT ''",
+        "ALTER TABLE tutors  ADD COLUMN earliest_available  VARCHAR DEFAULT ''",
+        "ALTER TABLE tutors  ADD COLUMN tally_id            VARCHAR",
+    ]
+    with eng.connect() as conn:
+        for stmt in stmts:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # column already exists – safe to ignore
+
+
+run_migrations(engine)
+
+
 # =============================================================================
 # RATE LIMITING  (identical to original)
 # =============================================================================
@@ -282,33 +331,202 @@ def check_rate_limit(ip):
 
 
 # =============================================================================
-# RESEND EMAIL  (identical to original, with optional src line)
+# CLIENT EMAIL DRAFT TEMPLATE
+# =============================================================================
+# This is the draft email included at the bottom of every new-lead notification.
+# Edit the body below to change the default message sent to new clients.
+#
+# Supported placeholders (all safe to leave in – missing values show as "—"):
+#   {client_name}     Lead's full name
+#   {course}          Subject they need help with
+#   {mode}            "In-person (DC area)" or "Online (Zoom)"
+#   {time_pref}       Their preferred start time (e.g. "3:00 PM")
+#   {tutor_name}      Matched tutor's name
+#   {tutor_subjects}  Tutor's listed subjects
+#   {tutor_rate}      Tutor's hourly rate (number)
+#
+# See README → "Client email draft template" to find this section quickly.
 # =============================================================================
 
-def send_email_via_resend(name, email, phone, course, mode, time_pref, message, src=""):
-    """Send contact-form email via Resend. Unchanged from original except optional src line."""
+CLIENT_EMAIL_DRAFT = """\
+Hi {client_name},
+
+Thank you for reaching out to Math Tutor DC! We received your request for \
+help with {course} and we're excited to connect you with a tutor.
+
+We'd like to match you with {tutor_name}, who specializes in {tutor_subjects} \
+and is available for {mode} sessions starting at {time_pref}.
+
+Our rate is ${tutor_rate}/hr. Please reply to confirm your first session, or \
+let us know if you have any questions!
+
+Looking forward to working with you,
+Math Tutor DC
+"""
+
+
+# =============================================================================
+# TUTOR MATCHING HELPERS
+# =============================================================================
+
+def parse_time_str(time_str):
+    """
+    Convert a time string such as '3:00 PM' or '15:00' into minutes since
+    midnight.  Returns None if the string cannot be parsed.
+    """
+    if not time_str:
+        return None
+    s = time_str.strip()
+    for fmt in ("%I:%M %p", "%H:%M", "%I %p", "%I:%M%p", "%I%p"):
+        try:
+            t = datetime.strptime(s, fmt)
+            return t.hour * 60 + t.minute
+        except ValueError:
+            continue
+    return None
+
+
+def match_tutor(course, time_pref, db):
+    """
+    Find the best active tutor for a given course and preferred start time.
+
+    Scoring (higher is better):
+      +10  tutor's subjects list contains the requested course (substring match,
+           case-insensitive)
+      +5   tutor's earliest_available is at or before the lead's preferred time
+           (i.e. the tutor CAN start when the lead wants to start)
+
+    Ties broken by hourly rate ascending (cheapest match first).
+    Falls back to the first active tutor alphabetically if no scores > 0.
+    Returns None when there are no active tutors in the database.
+
+    Note on time semantics: the lead's time_pref is the EARLIEST they can start
+    on a given day.  A tutor matches on time when tutor.earliest_available <=
+    lead.time_pref (tutor is free by the time the lead is available).
+    """
+    tutors = db.execute(
+        select(Tutor).where(Tutor.active == True).order_by(Tutor.name)
+    ).scalars().all()
+
+    if not tutors:
+        return None
+
+    lead_mins  = parse_time_str(time_pref)
+    course_lc  = (course or "").lower().strip()
+
+    scored = []
+    for t in tutors:
+        score    = 0
+        subjects = [s.strip().lower() for s in (t.subjects or "").split(",") if s.strip()]
+
+        # Course match: any subject overlaps with the requested course
+        for subj in subjects:
+            if course_lc and (course_lc in subj or subj in course_lc):
+                score += 10
+                break
+
+        # Availability match: tutor can start at or before lead's preferred time
+        if lead_mins is not None and t.earliest_available:
+            tutor_mins = parse_time_str(t.earliest_available)
+            if tutor_mins is not None and tutor_mins <= lead_mins:
+                score += 5
+
+        scored.append((score, t.rate or 0, t))
+
+    # Sort: highest score first, then cheapest rate
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return scored[0][2]
+
+
+# =============================================================================
+# RESEND EMAIL
+# =============================================================================
+
+def send_email_via_resend(name, email, phone, course, mode, time_pref, message, src="",
+                          matched_tutor=None):
+    """
+    Send a new-lead notification to the admin via Resend.
+    Includes:
+      1. Lead details
+      2. Best-matched tutor (if any active tutors exist)
+      3. A pre-drafted email ready to copy/paste and send to the client
+    """
     src_line = f"\nSource: {src}" if src else ""
+
+    # ── Tutor match block ────────────────────────────────────────────────────
+    SEP = "=" * 54
+    if matched_tutor:
+        avail = matched_tutor.earliest_available or "not set"
+        tutor_block = (
+            f"\n{SEP}\n"
+            f"SUGGESTED TUTOR\n"
+            f"{SEP}\n"
+            f"Name:      {matched_tutor.name}\n"
+            f"Email:     {matched_tutor.email}\n"
+            f"Subjects:  {matched_tutor.subjects or '(not listed)'}\n"
+            f"Rate:      ${matched_tutor.rate or '?'}/hr\n"
+            f"Earliest:  {avail}\n"
+            f"{SEP}\n"
+        )
+        tutor_name     = matched_tutor.name
+        tutor_subjects = matched_tutor.subjects or "various subjects"
+        tutor_rate     = matched_tutor.rate or 40
+    else:
+        tutor_block = (
+            f"\n{SEP}\n"
+            f"SUGGESTED TUTOR\n"
+            f"{SEP}\n"
+            f"No active tutors in the database yet.\n"
+            f"Add tutors via Export DB → DB Browser → tutors table.\n"
+            f"{SEP}\n"
+        )
+        tutor_name     = "a member of our team"
+        tutor_subjects = "math and related subjects"
+        tutor_rate     = 40
+
+    # ── Draft email to client ────────────────────────────────────────────────
+    draft_body = CLIENT_EMAIL_DRAFT.format(
+        client_name    = name,
+        course         = course   or "your subject",
+        mode           = mode     or "in-person or online",
+        time_pref      = time_pref or "your preferred time",
+        tutor_name     = tutor_name,
+        tutor_subjects = tutor_subjects,
+        tutor_rate     = tutor_rate,
+    )
+    draft_block = (
+        f"\n{SEP}\n"
+        f"DRAFT EMAIL TO CLIENT  (copy/paste → send from your inbox)\n"
+        f"{SEP}\n"
+        f"To:      {email}\n"
+        f"Subject: Your Math Tutor DC Request\n\n"
+        f"{draft_body}"
+        f"{SEP}\n"
+    )
+
+    # ── Full notification body ───────────────────────────────────────────────
+    body = (
+        f"New tutoring request:\n\n"
+        f"Name:   {name}\n"
+        f"Email:  {email}\n"
+        f"Phone:  {phone}\n"
+        f"Course: {course}\n"
+        f"Mode:   {mode}\n"
+        f"Time:   {time_pref}{src_line}\n\n"
+        f"Additional details:\n{message}\n"
+        f"{tutor_block}"
+        f"{draft_block}"
+    )
+
     payload = {
-        "from": "Math Tutor DC <onboarding@resend.dev>",
-        "to":   EMAIL_TO.split(","),
-        "subject": f"New Math Tutoring Request{f' [{src}]' if src else ''}",
-        "text": f"""
-New tutoring request:
-
-Name: {name}
-Email: {email}
-Phone: {phone}
-Class: {course}
-Mode: {mode}
-Preferred time: {time_pref}{src_line}
-
-Additional details:
-{message}
-""",
+        "from":    "Math Tutor DC <onboarding@resend.dev>",
+        "to":      EMAIL_TO.split(","),
+        "subject": f"New Tutoring Request – {name}{f' [{src}]' if src else ''}",
+        "text":    body,
     }
     headers = {
         "Authorization": f"Bearer {RESEND_API_KEY}",
-        "Content-Type": "application/json",
+        "Content-Type":  "application/json",
     }
     r = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
     if r.status_code >= 300:
@@ -358,9 +576,11 @@ def contact():
 
     print(f"[CONTACT] {name} <{email}> | course={course} | src={src or 'direct'} | IP={ip}")
 
+    tutor = None
     try:
         with SessionLocal() as db:
-            lead = Lead(
+            tutor = match_tutor(course, time_pref, db)
+            lead  = Lead(
                 name=name, email=email, phone=phone, course=course,
                 mode=mode, time_pref=time_pref, message=message, src=src,
             )
@@ -369,7 +589,8 @@ def contact():
     except Exception as e:
         print("[DB ERROR]", e)  # non-fatal – proceed to email
 
-    ok = send_email_via_resend(name, email, phone, course, mode, time_pref, message, src)
+    ok = send_email_via_resend(name, email, phone, course, mode, time_pref, message, src,
+                               matched_tutor=tutor)
     if not ok:
         return jsonify({"error": "Email send failed."}), 500
 
@@ -652,6 +873,232 @@ def admin_db_export():
         download_name="math_tutor.db",
         mimetype="application/octet-stream",
     )
+
+
+# =============================================================================
+# ADMIN ENDPOINTS – GOOGLE SHEETS SYNC  (tutor onboarding)
+# =============================================================================
+#
+# Flow:
+#   Tutor fills out Tally application form
+#   → Tally writes each submission as a row in Google Sheets (native integration)
+#   → Admin clicks "⟳ Sync Tally" in the dashboard
+#   → POST /admin/sync-sheets reads new rows and inserts them into the tutors table
+#   → New tutors are created as INACTIVE (active=0) pending admin review
+#   → Admin reviews new tutors in the Tutors table and activates them manually
+#
+# Client intake (contact form on index.html) is handled by POST /contact, NOT here.
+#
+# Required env vars:
+#   GOOGLE_CREDS_JSON   Full JSON of a Google Service Account key file.
+#                       Go to Google Cloud Console → IAM → Service Accounts →
+#                       Create key (JSON) → paste entire file content here.
+#                       Share the Google Sheet with the service account email.
+#   GOOGLE_SHEET_ID     The spreadsheet ID from its URL:
+#                       https://docs.google.com/spreadsheets/d/<ID>/edit
+#
+# Optional env vars (defaults match Tally's auto-generated column names):
+#   GOOGLE_SHEET_NAME   Tab name (default: Sheet1)
+#   COL_TALLY_ID        Submission ID column header  (default: "Submission ID")
+#   COL_NAME            Name column header            (default: "Name")
+#   COL_EMAIL           Email column header           (default: "Email")
+#   COL_PHONE           Phone column header           (default: "Phone")
+#   COL_SUBJECTS        Subjects/courses they teach   (default: "Subjects")
+#   COL_AVAILABLE       Earliest available time       (default: "Earliest Available")
+#   COL_RATE            Hourly rate requested         (default: "Rate")
+#   COL_NOTES           Additional notes / bio        (default: "Notes")
+
+
+def _sheets_service():
+    """Build and return an authenticated Google Sheets API service object."""
+    if not HAS_GOOGLE_SHEETS:
+        raise RuntimeError(
+            "Google API libraries not installed. "
+            "Run: pip install google-auth google-auth-httplib2 google-api-python-client"
+        )
+    raw = os.environ.get("GOOGLE_CREDS_JSON", "").strip()
+    if not raw:
+        raise RuntimeError(
+            "GOOGLE_CREDS_JSON env var is not set. "
+            "Paste the full service account JSON into Render's Environment dashboard."
+        )
+    try:
+        creds_dict = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"GOOGLE_CREDS_JSON is not valid JSON: {exc}") from exc
+
+    creds = service_account.Credentials.from_service_account_info(
+        creds_dict,
+        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    )
+    return goog_build("sheets", "v4", credentials=creds)
+
+
+@app.post("/admin/sync-sheets")
+@require_auth
+def admin_sync_sheets():
+    """
+    Pull new tutor applications from Google Sheets and import them into the
+    tutors table.  New tutors are created as INACTIVE (active=False) so the
+    admin can review each one and activate them when ready.
+
+    Deduplication uses tally_id first (when present in the sheet), then falls
+    back to email so re-syncing the same sheet is always safe.
+
+    This endpoint does NOT send per-row Resend emails.  The admin sees the
+    summary in the dashboard UI and can review new tutors in the Tutors table.
+    """
+    sheet_id   = os.environ.get("GOOGLE_SHEET_ID",   "").strip()
+    sheet_name = os.environ.get("GOOGLE_SHEET_NAME",  "Sheet1").strip()
+
+    if not sheet_id:
+        return jsonify({
+            "error": "GOOGLE_SHEET_ID env var is not set. Add it in Render's Environment dashboard."
+        }), 503
+
+    # Column name mapping – every key can be overridden via an env var.
+    # Set the matching env var in Render if your Tally form uses different labels.
+    COL = {
+        "tally_id":  os.environ.get("COL_TALLY_ID",  "Submission ID"),
+        "name":      os.environ.get("COL_NAME",      "Name"),
+        "email":     os.environ.get("COL_EMAIL",     "Email"),
+        "phone":     os.environ.get("COL_PHONE",     "Phone"),
+        "subjects":  os.environ.get("COL_SUBJECTS",  "Subjects"),
+        "available": os.environ.get("COL_AVAILABLE", "Earliest Available"),
+        "rate":      os.environ.get("COL_RATE",      "Rate"),
+        "notes":     os.environ.get("COL_NOTES",     "Notes"),
+    }
+
+    try:
+        service = _sheets_service()
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{sheet_name}!A:Z",
+        ).execute()
+        values = result.get("values", [])
+    except Exception as exc:
+        return jsonify({"error": f"Could not read Google Sheet: {exc}"}), 500
+
+    if len(values) < 2:
+        return jsonify({
+            "imported": 0, "skipped": 0,
+            "message": "Sheet is empty or contains only a header row.",
+        })
+
+    headers = [h.strip() for h in values[0]]
+
+    def cell(row, key):
+        """Return the trimmed cell value for a named column, or '' if missing."""
+        col_name = COL[key]
+        try:
+            idx = headers.index(col_name)
+        except ValueError:
+            return ""
+        return row[idx].strip() if idx < len(row) else ""
+
+    imported = 0
+    skipped  = 0
+    errors   = []
+    new_names = []  # for the summary message
+
+    with SessionLocal() as db:
+        for row_num, row in enumerate(values[1:], start=2):
+            # Skip completely empty rows
+            if not any(c.strip() for c in row if c):
+                skipped += 1
+                continue
+
+            tally_id = cell(row, "tally_id")
+            email    = cell(row, "email")
+            name     = cell(row, "name")
+
+            # Every tutor row must have at least a name and email
+            if not name or not email:
+                skipped += 1
+                continue
+
+            # ── Deduplication ────────────────────────────────────────────────
+            # 1. Prefer tally_id match (most reliable)
+            if tally_id:
+                already = db.execute(
+                    select(Tutor).where(Tutor.tally_id == tally_id)
+                ).scalar()
+                if already:
+                    skipped += 1
+                    continue
+
+            # 2. Fall back to email match (catches manual entries and re-submissions
+            #    from Tally forms that don't provide a Submission ID)
+            already = db.execute(
+                select(Tutor).where(Tutor.email == email)
+            ).scalar()
+            if already:
+                skipped += 1
+                continue
+
+            # ── Parse rate ────────────────────────────────────────────────────
+            rate_str = cell(row, "rate")
+            rate = 0.0
+            if rate_str:
+                # Strip currency symbols and parse the first numeric token
+                import re as _re
+                m = _re.search(r"[\d]+(?:\.\d+)?", rate_str.replace(",", ""))
+                if m:
+                    try:
+                        rate = float(m.group())
+                    except ValueError:
+                        pass
+
+            subjects  = cell(row, "subjects")
+            available = cell(row, "available")
+            notes     = cell(row, "notes")
+            phone     = cell(row, "phone")
+
+            try:
+                tutor = Tutor(
+                    name               = name,
+                    email              = email,
+                    phone              = phone,
+                    subjects           = subjects,
+                    earliest_available = available,
+                    rate               = rate,
+                    notes              = notes,
+                    tally_id           = tally_id or None,
+                    active             = False,  # Requires admin activation before matching
+                )
+                db.add(tutor)
+                db.commit()
+
+                imported  += 1
+                new_names.append(name)
+                print(f"[SYNC] Imported tutor row {row_num}: {name} <{email}> (inactive, pending review)")
+
+            except Exception as exc:
+                errors.append(f"Row {row_num} ({email}): {exc}")
+                db.rollback()
+                print(f"[SYNC ERROR] Row {row_num}: {exc}")
+
+    if imported > 0:
+        names_str = ", ".join(new_names)
+        summary = (
+            f"Imported {imported} new tutor application(s): {names_str}. "
+            f"They are INACTIVE – go to the Tutors table to review and activate them. "
+            f"{skipped} row(s) skipped (already in DB or missing data)."
+        )
+    else:
+        summary = f"No new tutor applications found. {skipped} row(s) skipped (already in DB or missing data)."
+
+    print(f"[SYNC COMPLETE] {summary}")
+    return jsonify({
+        "imported": imported,
+        "skipped":  skipped,
+        "errors":   errors,
+        "message":  summary,
+    })
 
 
 # =============================================================================

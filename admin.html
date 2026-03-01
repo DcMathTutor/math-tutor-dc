@@ -70,12 +70,13 @@
       font-family: inherit;
     }
     #logout-btn:hover { background: #fff; color: #000; }
-    #export-db-btn {
+    #export-db-btn, #sync-btn {
       background: transparent; color: #aaa; border: 1px solid #555;
       padding: 6px 14px; border-radius: 4px; font-size: 0.82rem;
       font-family: inherit;
     }
-    #export-db-btn:hover { color: #fff; border-color: #fff; }
+    #export-db-btn:hover, #sync-btn:hover { color: #fff; border-color: #fff; }
+    #sync-btn:disabled { opacity: 0.5; cursor: default; }
 
     .dash-body { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
 
@@ -277,6 +278,7 @@
       <span>Admin Dashboard</span>
     </div>
     <div class="header-actions">
+      <button id="sync-btn" onclick="syncSheets()" title="Import new tutor applications from Google Sheets into the Tutors table">⟳ Sync Tally</button>
       <button id="export-db-btn" onclick="exportDB()" title="Download SQLite database file">⬇ Export DB</button>
       <button id="logout-btn" onclick="logout()">Log out</button>
     </div>
@@ -966,6 +968,53 @@ function renderTutorsTable(rows) {
       <td>${r.session_count ?? 0}</td>
       <td><span class="tag ${r.active ? 'converted' : 'lost'}">${r.active ? 'Active' : 'Inactive'}</span></td>
     </tr>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TALLY → GOOGLE SHEETS SYNC
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function syncSheets() {
+  // Pull new tutor applications from Google Sheets and insert them into the
+  // tutors table as INACTIVE records pending admin review.
+  // The backend deduplicates by Tally Submission ID (then email) so re-syncing is safe.
+  const btn      = document.getElementById('sync-btn');
+  const origText = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = '⏳ Syncing…';
+
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_URL}/admin/sync-sheets`, {
+      method:  'POST',
+      headers: authHeaders(),
+    });
+
+    if (res.status === 401) { logout(); return; }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert('Sync failed: ' + (data.error || `HTTP ${res.status}`));
+      return;
+    }
+
+    const msg      = data.message || `Imported ${data.imported ?? 0} new lead(s).`;
+    const errNote  = data.errors?.length
+      ? `\n\nWarnings (${data.errors.length}):\n${data.errors.join('\n')}`
+      : '';
+    alert(msg + errNote);
+
+    // Refresh relevant sections if new tutors came in
+    if ((data.imported ?? 0) > 0) {
+      await Promise.all([loadTutors(), loadStats()]);
+    }
+  } catch (err) {
+    alert('Sync failed: ' + err.message);
+    console.error('[SyncSheets]', err);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = origText;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

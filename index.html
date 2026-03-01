@@ -45,29 +45,49 @@
             margin-top: 60px;
             font-size: 1.8rem;
         }
-        /* Form Section */
+        /* Contact Form Section */
         .form-section {
             max-width: 700px;
             margin: auto;
             padding: 20px;
         }
-        form {
-            display: grid;
-            gap: 15px;
-            margin-top: 20px;
+        .form-section > p {
+            color: #444;
+            margin-bottom: 16px;
         }
-        input, select, textarea {
-            padding: 12px;
+        label {
+            display: block;
+            font-weight: 600;
+            margin-top: 16px;
+            margin-bottom: 4px;
+        }
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #000;
             border-radius: 4px;
-            border: 1px solid #ccc;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.95rem;
+            box-sizing: border-box;
             background: #fff;
-            font-size: 1rem;
-            transition: 0.2s ease;
         }
-        input:focus, select:focus, textarea:focus {
-            border-color: #000;
-            outline: none;
+        textarea {
+            resize: vertical;
+            min-height: 100px;
         }
+        #submit-btn {
+            margin-top: 20px;
+            width: 100%;
+        }
+        #form-status {
+            margin-top: 12px;
+            font-size: 0.9rem;
+        }
+        /* Shared button style (used by carousel Schedule buttons) */
         button {
             padding: 15px;
             background: #000;
@@ -194,53 +214,47 @@
     <p>Professional in-person and online tutoring from early-career professionals in Washington DC.</p>
 </header>
 
-<section class="form-section">
+<section class="form-section" id="request-section">
     <h2>Request Private Tutoring</h2>
-    <form id="tutoring-form">
-        <input type="text" name="name" placeholder="Your Name" required />
-        <input type="email" name="email" placeholder="Your Email" required />
-        <input type="tel" name="phone" placeholder="Phone Number" required pattern="[0-9+\\-\\s()]{7,}">
+    <p>Fill out the form below and we'll match you with the right tutor within 24 hours.</p>
+    <form id="tutoring-form" onsubmit="sendTutoringRequest(event)">
+        <!-- QR / campaign attribution – populated from ?src= URL parameter by JS -->
+        <input type="hidden" name="src" id="form-src" value="">
 
-        <!-- class dropdown will be populated via JS from the shared course list -->
-        <select name="class" id="class-select" required>
-            <option value="">What class do you need help with?</option>
+        <label for="field-name">Your Name *</label>
+        <input type="text" id="field-name" name="name" required placeholder="Jane Smith">
+
+        <label for="field-email">Email Address *</label>
+        <input type="email" id="field-email" name="email" required placeholder="jane@example.com">
+
+        <label for="field-phone">Phone Number *</label>
+        <input type="tel" id="field-phone" name="phone" required placeholder="(555) 123-4567">
+
+        <label for="field-class">Course / Subject *</label>
+        <select id="field-class" name="class" required>
+            <option value="">Select a course…</option>
+            <!-- Options populated by JS from COURSE_LIST -->
         </select>
 
-        <select name="mode" required>
-            <option value="">In-person or Online?</option>
-            <option>In-person (DC area)</option>
-            <option>Online (Zoom)</option>
+        <label for="field-mode">Session Mode *</label>
+        <select id="field-mode" name="mode" required>
+            <option value="">Select a mode…</option>
+            <option value="In-person (DC area)">In-person (DC area)</option>
+            <option value="Online (Zoom)">Online (Zoom)</option>
         </select>
 
-        <select name="time" required>
-            <option value="">Preferred start time</option>
-            <option>7:00 AM</option>
-            <option>8:00 AM</option>
-            <option>9:00 AM</option>
-            <option>10:00 AM</option>
-            <option>11:00 AM</option>
-            <option>12:00 PM</option>
-            <option>1:00 PM</option>
-            <option>2:00 PM</option>
-            <option>3:00 PM</option>
-            <option>4:00 PM</option>
-            <option>5:00 PM</option>
-            <option>6:00 PM</option>
-            <option>7:00 PM</option>
-            <option>8:00 PM</option>
-            <option>9:00 PM</option>
-            <option>10:00 PM</option>
+        <label for="field-time">Earliest Available Time *</label>
+        <select id="field-time" name="time" required>
+            <option value="">Select a time…</option>
+            <!-- Hourly options 7 AM – 10 PM populated by JS -->
         </select>
 
-        <textarea name="message" rows="4" placeholder="Any additional details..." required></textarea>
+        <label for="field-message">Additional Information</label>
+        <textarea id="field-message" name="message" rows="4"
+                  placeholder="Tell us about your goals, schedule constraints, or anything else we should know."></textarea>
 
-        <!-- Hidden field: auto-populated from ?src= URL parameter.
-             Lets QR codes on flyers/socials silently tag the lead source.
-             e.g. https://dcmathtutor.github.io/math-tutor-dc/?src=flyer_a -->
-        <input type="hidden" name="src" id="src-field" value="">
-
-        <button type="submit">Submit Request</button>
-        <div id="form-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
+        <button type="submit" id="submit-btn">Request a Tutor &rarr;</button>
+        <p id="form-status"></p>
     </form>
 </section>
 
@@ -334,14 +348,17 @@
 }
 </script>
 
-<!-- shared course list + function to send email using mailto -->
+<!-- Contact form · Courses list · Carousel · QR attribution -->
 <script>
-  // Single source of truth for all courses
+  const BACKEND_URL = 'https://math-tutor-backend-y3uz.onrender.com';
+
+  // Single source of truth for all courses offered.
+  // Shared between the request form dropdown and the Courses Covered list.
   const COURSE_LIST = [
     "Algebra I & II",
     "Geometry",
     "Precalculus",
-    "Calculus I–III",
+    "Calculus I\u2013III",
     "Differential Equations",
     "Linear Algebra",
     "Probability & Statistics",
@@ -352,119 +369,135 @@
     "Undergraduate Thesis Prep"
   ];
 
+  // ── Contact form submission ─────────────────────────────────────────────────
   async function sendTutoringRequest(event) {
-    event.preventDefault(); // stop normal form submit
+    event.preventDefault();
+    const form   = document.getElementById('tutoring-form');
+    const btn    = document.getElementById('submit-btn');
+    const status = document.getElementById('form-status');
 
-    const form = document.getElementById('tutoring-form');
-    const statusEl = document.getElementById('form-status');
-    const submitBtn = form.querySelector('button[type="submit"]');
+    btn.disabled    = true;
+    btn.textContent = 'Sending\u2026';
+    status.textContent = '';
+    status.style.color = '#000';
 
-    statusEl.textContent = "";
-    statusEl.style.color = "#000";
-
-    const data = new FormData(form);
-    const payload = Object.fromEntries(data.entries());
-
-    // simple front-end check too (backend also validates)
-    if (!payload.name || !payload.email || !payload.phone || !payload.class || !payload.mode || !payload.time || !payload.message) {
-      statusEl.textContent = "Please fill in all fields.";
-      statusEl.style.color = "red";
-      return;
-    }
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Sending...";
+    const data = {
+      name:    form.querySelector('[name="name"]').value.trim(),
+      email:   form.querySelector('[name="email"]').value.trim(),
+      phone:   form.querySelector('[name="phone"]').value.trim(),
+      class:   form.querySelector('[name="class"]').value,
+      mode:    form.querySelector('[name="mode"]').value,
+      time:    form.querySelector('[name="time"]').value,
+      message: form.querySelector('[name="message"]').value.trim(),
+      src:     form.querySelector('[name="src"]').value,
+    };
 
     try {
-      const response = await fetch("https://math-tutor-backend-y3uz.onrender.com/contact", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
+      const resp = await fetch(BACKEND_URL + '/contact', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
       });
-
-      const dataResp = await response.json().catch(() => ({}));
-
-      if (response.ok && dataResp.ok) {
-        statusEl.textContent = "Thanks! Your request has been sent. We'll be in touch soon.";
-        statusEl.style.color = "green";
+      const json = await resp.json().catch(() => ({}));
+      if (resp.ok) {
+        status.style.color = 'green';
+        status.textContent = '\u2713 Request received! We\u2019ll be in touch within 24 hours.';
         form.reset();
+        // Re-populate src after reset (reset clears hidden fields too)
+        const urlSrc = new URLSearchParams(window.location.search).get('src');
+        if (urlSrc) form.querySelector('[name="src"]').value = urlSrc.slice(0, 64);
       } else {
-        console.error("Backend error", response.status, dataResp);
-        statusEl.textContent = dataResp.error || "Sorry, there was a problem sending your request. Please email us directly.";
-        statusEl.style.color = "red";
+        status.style.color = '#c00';
+        status.textContent = json.error || 'Something went wrong. Please try again.';
       }
     } catch (err) {
-      console.error("Network error", err);
-      statusEl.textContent = "Network error. Please email us directly.";
-      statusEl.style.color = "red";
+      status.style.color = '#c00';
+      status.textContent = 'Network error. Please check your connection and try again.';
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Submit Request";
+      btn.disabled    = false;
+      btn.textContent = 'Request a Tutor \u2192';
     }
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
-    const form = document.getElementById("tutoring-form");
-    form.addEventListener("submit", sendTutoringRequest);
+  document.addEventListener('DOMContentLoaded', function () {
 
-    // Read ?src= from the URL and silently populate the hidden field.
-    // This lets each QR code / link carry its own attribution tag
-    // without any visible UI change for the visitor.
+    // ── QR / campaign attribution → hidden form field ───────────────────────
+    // QR codes link to index.html?src=flyer_a etc. We store that tag in the
+    // hidden form field so every submission carries its source automatically.
     const urlSrc = new URLSearchParams(window.location.search).get('src');
     if (urlSrc) {
-      const srcField = document.getElementById('src-field');
-      if (srcField) srcField.value = urlSrc.slice(0, 64); // cap length
+      const srcField = document.getElementById('form-src');
+      if (srcField) srcField.value = urlSrc.slice(0, 64);
     }
 
-    // Carousel logic
-    const track = document.getElementById('carousel-track');
+    // ── Populate course dropdown from COURSE_LIST ────────────────────────────
+    const courseSelect = document.getElementById('field-class');
+    if (courseSelect) {
+      COURSE_LIST.forEach(function (course) {
+        const opt       = document.createElement('option');
+        opt.value       = course;
+        opt.textContent = course;
+        courseSelect.appendChild(opt);
+      });
+    }
+
+    // ── Populate time dropdown (hourly, 7 AM – 10 PM) ───────────────────────
+    const timeSelect = document.getElementById('field-time');
+    if (timeSelect) {
+      for (let h = 7; h <= 22; h++) {
+        const ampm  = h < 12 ? 'AM' : 'PM';
+        const hour  = h === 12 ? 12 : h % 12;
+        const label = hour + ':00 ' + ampm;
+        const opt   = document.createElement('option');
+        opt.value       = label;
+        opt.textContent = label;
+        timeSelect.appendChild(opt);
+      }
+    }
+
+    // ── Tutor card "Schedule a Session" → scroll to form ────────────────────
+    document.querySelectorAll('.tutor button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.getElementById('request-section').scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    // ── Carousel ─────────────────────────────────────────────────────────────
+    const track   = document.getElementById('carousel-track');
     const prevBtn = document.getElementById('carousel-prev');
     const nextBtn = document.getElementById('carousel-next');
     let currentIndex = 0;
 
-    function getVisibleCount() {
-      return window.innerWidth <= 640 ? 1 : 3;
-    }
+    function getVisibleCount() { return window.innerWidth <= 640 ? 1 : 3; }
 
     function updateCarousel() {
-      const cards = track.querySelectorAll('.tutor');
-      const total = cards.length;
-      const VISIBLE = getVisibleCount();
-      const maxIndex = Math.max(0, total - VISIBLE);
-      currentIndex = Math.min(Math.max(currentIndex, 0), maxIndex);
+      const cards    = track.querySelectorAll('.tutor');
+      const VISIBLE  = getVisibleCount();
+      const maxIndex = Math.max(0, cards.length - VISIBLE);
+      currentIndex   = Math.min(Math.max(currentIndex, 0), maxIndex);
       if (cards.length > 0) {
-        const cardWidth = cards[0].offsetWidth;
         const gap = 20;
-        track.style.transform = 'translateX(-' + (currentIndex * (cardWidth + gap)) + 'px)';
+        track.style.transform =
+          'translateX(-' + (currentIndex * (cards[0].offsetWidth + gap)) + 'px)';
       }
       prevBtn.disabled = currentIndex === 0;
       nextBtn.disabled = currentIndex >= maxIndex;
     }
 
-    prevBtn.addEventListener('click', function() { currentIndex--; updateCarousel(); });
-    nextBtn.addEventListener('click', function() { currentIndex++; updateCarousel(); });
-    window.addEventListener('resize', function() { currentIndex = 0; updateCarousel(); });
+    prevBtn.addEventListener('click', function () { currentIndex--; updateCarousel(); });
+    nextBtn.addEventListener('click', function () { currentIndex++; updateCarousel(); });
+    window.addEventListener('resize', function () { currentIndex = 0; updateCarousel(); });
     updateCarousel();
 
-    // Populate dropdown and course list from shared COURSE_LIST
-    const select = document.getElementById("class-select");
-    const ul = document.getElementById("courses-list");
-
-    COURSE_LIST.forEach(function(course) {
-      if (select) {
-        const opt = document.createElement("option");
-        opt.value = course;
-        opt.textContent = course;
-        select.appendChild(opt);
-      }
-      if (ul) {
-        const li = document.createElement("li");
+    // ── Courses Covered list ─────────────────────────────────────────────────
+    const ul = document.getElementById('courses-list');
+    if (ul) {
+      COURSE_LIST.forEach(function (course) {
+        const li       = document.createElement('li');
         li.textContent = course;
         ul.appendChild(li);
-      }
-    });
+      });
+    }
   });
 </script>
 
